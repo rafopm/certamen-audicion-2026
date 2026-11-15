@@ -1,0 +1,57 @@
+/**
+ * Estilos del tablero de puntajes y ranking
+ */
+
+.scoreboard-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+}
+
+/* Fila del líder con resplandor dorado */
+.leader-row {
+  background: linear-gradient(90deg, rgba(251, 191, 36, 0.15) 0%, rgba(30, 41, 59, 0.9) 100%) !important;
+  border-left: 4px solid #fbbf24 !important;
+  box-shadow: 0 4px 15px rgba(251, 191, 36, 0.1);
+}
+
+.leader-row td:first-child {
+  color: #fbbf24;
+  font-weight: 900;
+}
+
+/* Efectos en podio */
+.podium-container {
+  perspective: 1000px;
+}
+
+.podium-first {
+  filter: drop-shadow(0 15px 25px rgba(251, 191, 36, 0.3));
+}
+
+.podium-second {
+  filter: drop-shadow(0 10px 15px rgba(203, 213, 225, 0.2));
+}
+
+.podium-third {
+  filter: drop-shadow(0 10px 15px rgba(180, 83, 9, 0.2));
+}
+
+/* Checkbox personalizado para la lista de alumnos */
+.checkbox-acierto {
+  accent-color: #fbbf24;
+  transition: transform 0.15s ease;
+}
+
+.checkbox-acierto:hover {
+  transform: scale(1.15);
+}
+
+.alumno-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.alumno-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+}

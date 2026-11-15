@@ -1,0 +1,38 @@
+/**
+ * Estilos del temporizador de audición
+ */
+
+#timer-display {
+  font-family: var(--font-display, 'Playfair Display', serif);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 4px 20px rgba(251, 191, 36, 0.4);
+  line-height: 1;
+  transition: color 0.3s ease, transform 0.2s ease;
+  user-select: none;
+}
+
+/* Pulso cuando el tiempo es crítico (<= 5s) */
+.timer-pulse {
+  animation: timerHeartbeat 0.9s ease-in-out infinite;
+}
+
+@keyframes timerHeartbeat {
+  0% {
+    transform: scale(1);
+    text-shadow: 0 0 20px rgba(239, 68, 68, 0.6);
+  }
+  50% {
+    transform: scale(1.08);
+    text-shadow: 0 0 35px rgba(239, 68, 68, 0.9);
+  }
+  100% {
+    transform: scale(1);
+    text-shadow: 0 0 20px rgba(239, 68, 68, 0.6);
+  }
+}
+
+/* Anillo visual del temporizador si se usa */
+.timer-circular-progress {
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+}

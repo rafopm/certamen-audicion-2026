@@ -1,0 +1,16 @@
+{
+  "name": "certamen-audicion-2026",
+  "version": "1.0.0",
+  "description": "Herramienta para el Certamen de Audición Musical 2026 - Johann Strauss",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "npm run build && gh-pages -d dist"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0",
+    "gh-pages": "^6.1.1"
+  }
+}
