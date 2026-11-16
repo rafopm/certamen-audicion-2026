@@ -25,31 +25,42 @@ export async function initApp() {
     let alumnos = [];
     let audiciones = [];
     let resultados = [];
+    let respuestasAudicion = [];
     let rondaActual = 1;
+    let rondaCerrada = false;
 
     try {
-      const [cancionesRes, alumnosRes, estadoRes] = await Promise.all([
+      const [configRes, cancionesRes, alumnosRes, estadoRes] = await Promise.all([
+        api.getConfig().catch(err => {
+          console.warn('[APP] No se pudo cargar configuración del backend:', err);
+          return { data: {} };
+        }),
         api.getCanciones().catch(() => ({ data: [] })),
         api.getAlumnos().catch(() => ({ data: [] })),
         api.getEstadoCertamen().catch(() => ({ data: null }))
       ]);
 
+      CONFIG.syncFromBackend(configRes.data || {});
       canciones = cancionesRes.data || [];
       alumnos = alumnosRes.data || [];
 
       if (estadoRes && estadoRes.data) {
         rondaActual = estadoRes.data.rondaActual || 1;
-        audiciones = estadoRes.data.audicionesRonda || [];
-        resultados = estadoRes.data.resultadosRonda || [];
-      } else {
-        // Carga directa de la ronda 1
-        const [audRes, resRes] = await Promise.all([
-          api.getAudicionesRonda(rondaActual).catch(() => ({ data: [] })),
-          api.getResultados(rondaActual).catch(() => ({ data: [] }))
-        ]);
-        audiciones = audRes.data || [];
-        resultados = resRes.data || [];
+        rondaCerrada = Boolean(estadoRes.data.rondaCerrada);
       }
+
+      if (!CONFIG.ROUNDS[rondaActual]) rondaActual = 1;
+      const [audRes, resRes, respuestasRes] = await Promise.all([
+        api.getAudicionesRonda(rondaActual).catch(() => ({ data: [] })),
+        api.getResultados(rondaActual).catch(() => ({ data: [] })),
+        api.getRespuestasRonda(rondaActual).catch(err => {
+          console.warn('[APP] Backend aún no expone las respuestas por audición:', err);
+          return { data: [] };
+        })
+      ]);
+      audiciones = audRes.data || [];
+      resultados = resRes.data || [];
+      respuestasAudicion = respuestasRes.data || [];
     } catch (netErr) {
       console.warn('[APP] Aviso de red al conectar backend Apps Script:', netErr);
       DOM.showToast('Modo sin conexión o URL de Apps Script pendiente. Cargando vista.', 'warning', 4000);
@@ -60,8 +71,11 @@ export async function initApp() {
       canciones: canciones,
       alumnos: alumnos,
       rondaActual: rondaActual,
+      rondaCerrada,
+      audicionActual: 1,
       audicionesRonda: audiciones,
       resultados: resultados,
+      respuestasAudicion: respuestasAudicion,
       isLoading: false
     });
 
@@ -79,6 +93,9 @@ export async function initApp() {
     // 5. Sincronizar selector de ronda
     const selectRonda = DOM.get('selectRonda');
     if (selectRonda) {
+      selectRonda.innerHTML = Object.entries(CONFIG.ROUNDS).map(([round, config]) =>
+        `<option value="${round}">${config.nombre} - ${config.audiciones} audiciones de ${config.duracion}s (mínimo: ${config.minimoPasar})</option>`
+      ).join('');
       selectRonda.value = String(rondaActual);
     }
 

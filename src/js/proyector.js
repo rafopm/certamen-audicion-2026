@@ -7,18 +7,29 @@
  * 3. 'RANKING_FINAL': Revela el podio con coronas, tabla completa y confeti al finalizar.
  */
 import { api } from './services/api.js';
+import { preloadAudio } from './services/audio-service.js';
 import { CONFIG } from './config.js';
 import { formatNombre, formatRanking } from './utils/formatters.js';
 
 let lastRonda = null;
 let lastModo = null;
 let confettiTriggered = false;
+let audioActivated = false;
+let activePlaybackCommandId = null;
+let playbackInterval = null;
+let countdownInterval = null;
+let completionRetryTimeout = null;
+let activationWaiters = [];
+let completionSent = false;
 
 // Elementos DOM
 const elRondaNombre = document.getElementById('proj-ronda-nombre');
 const elRondaDetalle = document.getElementById('proj-ronda-detalle');
 const elTimer = document.getElementById('proj-timer');
 const elLiveIndicator = document.getElementById('proj-live-status');
+const elAudio = document.getElementById('proj-audio');
+const elAudioStatus = document.getElementById('proj-audio-status');
+const btnActivateAudio = document.getElementById('btn-audio-activate');
 
 // Vistas
 const viewAudicion = document.getElementById('view-modo-audicion');
@@ -42,6 +53,17 @@ async function initProyector() {
   if (btnFullscreen) {
     btnFullscreen.addEventListener('click', toggleFullScreen);
   }
+
+  if (btnActivateAudio) {
+    btnActivateAudio.addEventListener('click', () => {
+      audioActivated = true;
+      btnActivateAudio.textContent = '🔊 Audio activado';
+      btnActivateAudio.disabled = true;
+      btnActivateAudio.classList.add('opacity-60', 'cursor-default');
+      resolveActivationWaiters(true);
+      setAudioStatus('Audio del proyector activado; esperando la audición del jurado.');
+    });
+  }
 }
 
 /**
@@ -49,11 +71,17 @@ async function initProyector() {
  */
 async function updateProyector() {
   try {
+    const requestStartedAt = Date.now();
     const estadoRes = await api.getEstadoCertamen().catch(() => null);
 
     if (estadoRes && estadoRes.data) {
+      const responseReceivedAt = Date.now();
       const estado = estadoRes.data;
       renderEstado(estado);
+      sincronizarReproduccion(
+        estado.reproduccionProyector,
+        calcularDesfaseServidor(estado.reproduccionProyector, requestStartedAt, responseReceivedAt)
+      );
 
       // Sincronizar modo visual
       const modo = estado.modoProyector || 'AUDICION';
@@ -70,6 +98,248 @@ async function updateProyector() {
       elLiveIndicator.innerHTML = '<span class="inline-block w-3 h-3 bg-amber-500 rounded-full mr-2"></span> CONECTANDO...';
     }
   }
+}
+
+function sincronizarReproduccion(estado, serverOffsetMs = 0) {
+  if (!estado || !estado.commandId) return;
+
+  const commandId = String(estado.commandId);
+  if (estado.status === 'loading') {
+    if (activePlaybackCommandId !== commandId) {
+      activePlaybackCommandId = commandId;
+      completionSent = false;
+      prepararReproduccion(estado).catch(error => {
+        console.error('[PROYECTOR] No se pudo preparar la pista:', error);
+        marcarErrorReproduccion(commandId, error);
+      });
+    }
+    return;
+  }
+
+  if (commandId !== activePlaybackCommandId) return;
+
+  if (estado.status === 'countdown' && !countdownInterval && !playbackInterval) {
+    iniciarCuentaRegresiva(estado, serverOffsetMs);
+  } else if (estado.status === 'cancelled' || estado.status === 'error' || estado.status === 'completed') {
+    limpiarReproduccion();
+    if (estado.status === 'cancelled') setAudioStatus('Audición detenida desde el panel del jurado.');
+    if (estado.status === 'error') setAudioStatus(`Error de audio: ${estado.error || 'no se pudo reproducir la pista.'}`);
+    if (estado.status === 'completed') setAudioStatus('Audición finalizada.');
+  }
+}
+
+async function prepararReproduccion(estado) {
+  const commandId = String(estado.commandId);
+  setAudioStatus(`⏳ Cargando archivo para la audición ${estado.audicionNum}...`);
+  try {
+    const audioUrl = await preloadAudio(estado.fileId);
+    if (activePlaybackCommandId !== commandId) return;
+
+    await cargarAudioEnElemento(audioUrl);
+    setAudioStatus('Pista cargada. Activa el audio en esta computadora para continuar.');
+    const activated = await esperarActivacionAudio();
+    if (!activated || activePlaybackCommandId !== commandId) return;
+
+    const current = await api.getReproduccionProyector();
+    if (!current.data || String(current.data.commandId) !== commandId || current.data.status !== 'loading') {
+      limpiarReproduccion();
+      return;
+    }
+
+    const duration = Number(estado.duration);
+    const totalDuration = Number(elAudio.duration);
+    if (!Number.isFinite(duration) || duration < 1 ||
+        !Number.isFinite(totalDuration) || totalDuration < duration) {
+      throw new Error('La pista no tiene duración suficiente para esta audición.');
+    }
+    const maxStart = Number.isFinite(totalDuration) && totalDuration > duration
+      ? Math.floor(totalDuration - duration)
+      : 0;
+    const startSec = estado.randomStart && maxStart > 0
+      ? Math.floor(Math.random() * (maxStart + 1))
+      : 0;
+    const requestStartedAt = Date.now();
+    const response = await api.actualizarReproduccionProyector({
+      commandId,
+      status: 'countdown',
+      startSec
+    });
+    if (activePlaybackCommandId === commandId && response.data) {
+      iniciarCuentaRegresiva(response.data, calcularDesfaseServidor(response.data, requestStartedAt, Date.now()));
+    }
+  } catch (error) {
+    if (activePlaybackCommandId === commandId) throw error;
+  }
+}
+
+function cargarAudioEnElemento(audioUrl) {
+  return new Promise((resolve, reject) => {
+    if (!elAudio) {
+      reject(new Error('No se encontró el reproductor de audio del proyector.'));
+      return;
+    }
+    if (elAudio.readyState >= 2 && elAudio.src === audioUrl) {
+      resolve();
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error('Se agotó el tiempo de espera al cargar el audio.'));
+    }, 30000);
+    const cleanup = () => {
+      clearTimeout(timeout);
+      elAudio.removeEventListener('canplay', onReady);
+      elAudio.removeEventListener('error', onError);
+    };
+    const onReady = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error('El navegador no pudo decodificar el archivo de audio.'));
+    };
+
+    elAudio.addEventListener('canplay', onReady, { once: true });
+    elAudio.addEventListener('error', onError, { once: true });
+    elAudio.src = audioUrl;
+    elAudio.load();
+    if (elAudio.readyState >= 2) onReady();
+  });
+}
+
+function esperarActivacionAudio() {
+  if (audioActivated) return Promise.resolve(true);
+  setAudioStatus('Pista cargada. Haz clic en «Activar audio» en esta computadora.');
+  return new Promise(resolve => activationWaiters.push(resolve));
+}
+
+function resolveActivationWaiters(activated) {
+  const waiters = activationWaiters;
+  activationWaiters = [];
+  waiters.forEach(resolve => resolve(activated));
+}
+
+function iniciarCuentaRegresiva(estado, serverOffsetMs = 0) {
+  if (countdownInterval || playbackInterval) return;
+  const commandId = String(estado.commandId);
+  const startAt = Date.parse(estado.startAt);
+  if (!Number.isFinite(startAt)) {
+    marcarErrorReproduccion(commandId, new Error('El servidor devolvió una hora de inicio inválida.'));
+    return;
+  }
+
+  if (elTimer) elTimer.dataset.running = 'true';
+  countdownInterval = setInterval(() => {
+    if (activePlaybackCommandId !== commandId) {
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+      return;
+    }
+    const seconds = Math.max(0, Math.ceil((startAt - Date.now() - serverOffsetMs) / 1000));
+    if (elTimer) elTimer.textContent = String(seconds || Number(estado.duration));
+    setAudioStatus(seconds > 0
+      ? `✅ Archivo cargado. La audición inicia en ${seconds}...`
+      : '🔊 Iniciando reproducción...');
+    if (seconds <= 0) {
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+      reproducirPista(estado, startAt, serverOffsetMs).catch(error => marcarErrorReproduccion(commandId, error));
+    }
+  }, 100);
+}
+
+async function reproducirPista(estado, startAt, serverOffsetMs) {
+  const commandId = String(estado.commandId);
+  if (activePlaybackCommandId !== commandId || !elAudio) return;
+  try {
+    elAudio.currentTime = Number(estado.startSec) || 0;
+    await elAudio.play();
+    if (activePlaybackCommandId !== commandId) {
+      elAudio.pause();
+      return;
+    }
+
+    await api.actualizarReproduccionProyector({ commandId, status: 'playing' });
+    const endAt = startAt - serverOffsetMs + Number(estado.duration) * 1000;
+    setAudioStatus('🔊 Reproduciendo audición.');
+    playbackInterval = setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((endAt - Date.now()) / 1000));
+      if (elTimer) elTimer.textContent = String(remaining);
+      if (remaining <= 0) completarReproduccion(commandId);
+    }, 100);
+    elAudio.onended = () => completarReproduccion(commandId);
+  } catch (error) {
+    elAudio.pause();
+    throw error;
+  }
+}
+
+async function completarReproduccion(commandId) {
+  if (activePlaybackCommandId !== commandId || completionSent) return;
+  completionSent = true;
+  if (playbackInterval) clearInterval(playbackInterval);
+  playbackInterval = null;
+  if (elAudio) {
+    elAudio.pause();
+    elAudio.onended = null;
+  }
+  try {
+    await api.actualizarReproduccionProyector({ commandId, status: 'completed' });
+    limpiarReproduccion();
+    setAudioStatus('Audición finalizada.');
+  } catch (error) {
+    console.error('[PROYECTOR] No se pudo confirmar el fin de la audición:', error);
+    setAudioStatus('Audición finalizada, pero no se pudo actualizar el estado del servidor.');
+    completionSent = false;
+    completionRetryTimeout = setTimeout(() => completarReproduccion(commandId), 3000);
+  }
+}
+
+async function marcarErrorReproduccion(commandId, error) {
+  if (activePlaybackCommandId !== commandId) return;
+  console.error('[PROYECTOR] Error de reproducción:', error);
+  limpiarReproduccion();
+  setAudioStatus(`⚠️ Error de audio: ${error.message}`);
+  try {
+    await api.actualizarReproduccionProyector({
+      commandId,
+      status: 'error',
+      error: error.message
+    });
+  } catch (updateError) {
+    console.error('[PROYECTOR] No se pudo notificar el error al panel:', updateError);
+  }
+}
+
+function limpiarReproduccion() {
+  activePlaybackCommandId = null;
+  if (countdownInterval) clearInterval(countdownInterval);
+  if (playbackInterval) clearInterval(playbackInterval);
+  if (completionRetryTimeout) clearTimeout(completionRetryTimeout);
+  countdownInterval = null;
+  playbackInterval = null;
+  completionRetryTimeout = null;
+  resolveActivationWaiters(false);
+  if (elAudio) {
+    elAudio.pause();
+    elAudio.onended = null;
+    elAudio.removeAttribute('src');
+    elAudio.load();
+  }
+  if (elTimer) delete elTimer.dataset.running;
+}
+
+function setAudioStatus(message) {
+  if (elAudioStatus) elAudioStatus.textContent = message;
+}
+
+function calcularDesfaseServidor(estado, requestStartedAt, responseReceivedAt) {
+  const serverNow = Date.parse(estado && estado.serverNow);
+  return Number.isFinite(serverNow)
+    ? serverNow - (requestStartedAt + responseReceivedAt) / 2
+    : 0;
 }
 
 /**

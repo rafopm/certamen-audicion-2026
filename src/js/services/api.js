@@ -93,6 +93,10 @@ class ApiClient {
     return this.get('getResultados', ronda ? { ronda } : {});
   }
 
+  getRespuestasRonda(ronda = null) {
+    return this.get('getRespuestasRonda', ronda ? { ronda } : {});
+  }
+
   getRanking() {
     return this.get('getRanking');
   }
@@ -109,6 +113,10 @@ class ApiClient {
     return this.get('getEstadoCertamen');
   }
 
+  getReproduccionProyector() {
+    return this.get('getReproduccionProyector');
+  }
+
   // === MÉTODOS POST ===
 
   guardarAciertos(alumnoId, ronda, audicionNum, acerto) {
@@ -119,8 +127,20 @@ class ApiClient {
     return this.post('guardarAciertosLote', data);
   }
 
+  guardarRespuestasAudicion(data) {
+    return this.post('guardarRespuestasAudicion', data);
+  }
+
   registrarReproduccion(data) {
     return this.post('registrarReproduccion', data);
+  }
+
+  solicitarReproduccionProyector(data) {
+    return this.post('solicitarReproduccionProyector', data);
+  }
+
+  actualizarReproduccionProyector(data) {
+    return this.post('actualizarReproduccionProyector', data);
   }
 
   actualizarModoProyector(modo) {
@@ -147,8 +167,8 @@ class ApiClient {
     return this.post('actualizarConfig', { clave, valor });
   }
 
-  guardarConfigLote(configMap) {
-    return this.post('guardarConfigLote', configMap);
+  guardarConfigLote(configMap, reiniciarResultados = false) {
+    return this.post('guardarConfigLote', { config: configMap, reiniciarResultados });
   }
 
   guardarCanciones(canciones) {
@@ -171,8 +191,8 @@ class ApiClient {
     return this.post('limpiarAlumnos', {});
   }
 
-  guardarAudicionesRonda(audiciones) {
-    return this.post('guardarAudicionesRonda', { audiciones });
+  guardarAudicionesRonda(audiciones, reiniciarResultados = false) {
+    return this.post('guardarAudicionesRonda', { audiciones, reiniciarResultados });
   }
 
   aleatorizarAudiciones() {

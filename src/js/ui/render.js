@@ -12,14 +12,18 @@ import { CONFIG } from '../config.js';
 export function renderAlumnos(arg1, arg2) {
   let alumnos = [];
   let resultados = [];
+  let respuestasAudicion = [];
   let rondaActual = 1;
+  let rondaCerrada = false;
   let totalAudiciones = 4;
   let audicionActualNum = 1;
 
   if (arg1 && Array.isArray(arg1.alumnos)) {
     alumnos = arg1.alumnos || [];
     resultados = Array.isArray(arg1.resultados) ? arg1.resultados : Object.values(arg1.resultados || {});
+    respuestasAudicion = Array.isArray(arg1.respuestasAudicion) ? arg1.respuestasAudicion : [];
     rondaActual = arg1.rondaActual || 1;
+    rondaCerrada = Boolean(arg1.rondaCerrada);
     audicionActualNum = arg1.audicionActual || 1;
     const configRonda = CONFIG.ROUNDS[rondaActual] || { audiciones: 4 };
     totalAudiciones = configRonda.audiciones;
@@ -64,10 +68,14 @@ export function renderAlumnos(arg1, arg2) {
 
   const configRonda = CONFIG.ROUNDS[rondaActual] || { minimoPasar: 2 };
   const minPasar = configRonda.minimoPasar;
+  const respuestasRonda = respuestasAudicion.filter(response => Number(response.ronda) === Number(rondaActual));
 
   container.innerHTML = alumnos.map(alumno => {
     const res = resMap[String(alumno.id)];
-    const aciertosPrevios = res ? parseInt(res.aciertos, 10) : 0;
+    const respuestasAlumno = respuestasRonda.filter(response => String(response.alumnoId) === String(alumno.id));
+    const aciertosPrevios = respuestasAlumno.length > 0
+      ? respuestasAlumno.filter(response => response.correcto === true || String(response.correcto).toLowerCase() === 'true').length
+      : (res ? parseInt(res.aciertos, 10) : 0);
     
     // Determinar si fue eliminado en una ronda anterior o en esta ronda
     const rEliminacion = alumno.rondaEliminacion || eliminacionesMap[String(alumno.id)];
@@ -95,8 +103,10 @@ export function renderAlumnos(arg1, arg2) {
     // Checkboxes para cada audición de la ronda
     let checkboxesHtml = '';
     for (let audNum = 1; audNum <= totalAudiciones; audNum++) {
-      const isChecked = audNum <= aciertosPrevios;
+      const audicionRespuesta = respuestasAlumno.find(response => Number(response.audicionNum) === audNum);
+      const isChecked = audicionRespuesta && (audicionRespuesta.correcto === true || String(audicionRespuesta.correcto).toLowerCase() === 'true');
       const isAudicionActual = audNum === audicionActualNum;
+      const isDisabled = rondaCerrada || eliminadoAnteriormente || !isAudicionActual;
 
       checkboxesHtml += `
         <label class="flex flex-col items-center justify-center cursor-pointer p-1.5 rounded-lg border transition select-none ${isAudicionActual ? 'bg-yellow-500/20 border-yellow-400 shadow-md ring-1 ring-yellow-400' : 'bg-blue-950/60 hover:bg-blue-900 border-blue-700/50'}">
@@ -104,17 +114,18 @@ export function renderAlumnos(arg1, arg2) {
           <input 
             type="checkbox" 
             class="checkbox-acierto w-5 h-5 text-yellow-500 bg-blue-900 rounded border-gray-400 focus:ring-yellow-400 focus:ring-2 cursor-pointer"
-            data-alumno-id="${alumno.id}"
+            data-alumno-id="${sanitizeInput(alumno.id)}"
             data-audicion="${audNum}"
             ${isChecked ? 'checked' : ''}
-            ${eliminadoAnteriormente ? 'disabled' : ''}
+            ${isDisabled ? 'disabled' : ''}
           />
+          <span class="text-[9px] ${audicionRespuesta ? (isChecked ? 'text-emerald-300' : 'text-rose-300') : 'text-slate-500'}">${audicionRespuesta ? (isChecked ? 'Correcta' : 'Error') : 'Pendiente'}</span>
         </label>
       `;
     }
 
     return `
-      <div class="alumno-card bg-slate-800/90 border border-slate-700 rounded-xl p-4 shadow-md transition hover:border-yellow-500/50 ${eliminadoAnteriormente ? 'opacity-40 bg-slate-950 cursor-not-allowed' : ''}" data-alumno-card="${alumno.id}">
+      <div class="alumno-card bg-slate-800/90 border border-slate-700 rounded-xl p-4 shadow-md transition hover:border-yellow-500/50 ${eliminadoAnteriormente ? 'opacity-40 bg-slate-950 cursor-not-allowed' : ''}" data-alumno-card="${sanitizeInput(alumno.id)}">
         <div class="flex items-start justify-between mb-2">
           <div>
             <h3 class="font-bold text-base md:text-lg text-white">${sanitizeInput(nombreFormat)}</h3>
@@ -144,8 +155,10 @@ export function renderAlumnos(arg1, arg2) {
               type="text" 
               placeholder="Código escrito (ej: TP2380)"
               class="input-pizarra-alumno bg-slate-950 text-yellow-300 border border-slate-700 uppercase font-mono text-xs px-2.5 py-1 rounded-lg w-full focus:ring-1 focus:ring-yellow-400 focus:outline-none"
-              data-alumno-id="${alumno.id}"
+              data-alumno-id="${sanitizeInput(alumno.id)}"
               data-audicion="${audicionActualNum}"
+              ${rondaCerrada ? 'disabled' : ''}
+              value="${sanitizeInput(respuestasAlumno.find(response => Number(response.audicionNum) === audicionActualNum)?.respuesta || '')}"
             />
           </div>
         ` : ''}

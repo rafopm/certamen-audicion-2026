@@ -36,13 +36,15 @@ export function extractDriveId(input) {
   return trimmed;
 }
 
+import { CONFIG } from '../config.js';
+
 /**
- * Valida que la ronda sea un número entero entre 1 y 5 (o según config)
+ * Valida que la ronda sea un número entero entre 1 y el total de rondas configuradas
  * @param {number|string} ronda
- * @param {number} maxRondas
+ * @param {number} [maxRondas]
  * @returns {boolean}
  */
-export function isValidRonda(ronda, maxRondas = 5) {
+export function isValidRonda(ronda, maxRondas = (CONFIG.TOTAL_RONDAS || 5)) {
   const num = Number(ronda);
   return Number.isInteger(num) && num >= 1 && num <= maxRondas;
 }
@@ -73,6 +75,14 @@ export function sanitizeInput(input) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+export function normalizeAnswer(input) {
+  return String(input || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
 }
 
 /**

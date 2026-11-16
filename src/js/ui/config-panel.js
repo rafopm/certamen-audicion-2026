@@ -9,16 +9,19 @@
 import { DOM } from './dom.js';
 import { api } from '../services/api.js';
 import { appState } from '../core/state.js';
-import { CONFIG } from '../config.js';
+import { CONFIG, getRoundConfigSuffix } from '../config.js';
 import { renderAlumnos, renderAudiciones } from './render.js';
-import { extractDriveId } from '../utils/validators.js';
+import { extractDriveId, sanitizeInput } from '../utils/validators.js';
 
 let modalElement = null;
-let currentTab = 'sorteo';
+let currentTab = 'rondas';
 let cancionesTemp = [];
 let audicionesSorteoTemp = [];
+let audicionesGuardadasTemp = [];
 let alumnosTemp = [];
 let configTemp = {};
+let respuestasTemp = [];
+let resultadosTemp = [];
 
 /**
  * Inicializa el Panel de Configuración y sus botones
@@ -65,21 +68,21 @@ function crearModalHTML() {
 
       <!-- Barra de Pestañas / Tabs -->
       <div class="flex border-b border-slate-800 bg-slate-950/70 overflow-x-auto text-xs md:text-sm font-bold">
-        <button class="tab-btn px-4 py-3 border-b-2 border-yellow-400 text-yellow-300 flex items-center space-x-2 whitespace-nowrap cursor-pointer" data-tab="sorteo">
-          <span>🎲</span>
-          <span>Sorteo de Canciones</span>
+        <button class="tab-btn px-4 py-3 border-b-2 border-yellow-400 text-yellow-300 flex items-center space-x-2 whitespace-nowrap cursor-pointer" data-tab="rondas">
+          <span>1️⃣</span>
+          <span>Rondas y reglas</span>
         </button>
         <button class="tab-btn px-4 py-3 border-b-2 border-transparent text-slate-400 hover:text-white flex items-center space-x-2 whitespace-nowrap cursor-pointer" data-tab="canciones">
           <span>🎵</span>
-          <span>Canciones</span>
+          <span>2. Canciones</span>
+        </button>
+        <button class="tab-btn px-4 py-3 border-b-2 border-transparent text-slate-400 hover:text-white flex items-center space-x-2 whitespace-nowrap cursor-pointer" data-tab="sorteo">
+          <span>3️⃣</span>
+          <span>Sorteo de canciones</span>
         </button>
         <button class="tab-btn px-4 py-3 border-b-2 border-transparent text-slate-400 hover:text-white flex items-center space-x-2 whitespace-nowrap cursor-pointer" data-tab="participantes">
           <span>👥</span>
-          <span>Participantes (Carga Masiva)</span>
-        </button>
-        <button class="tab-btn px-4 py-3 border-b-2 border-transparent text-slate-400 hover:text-white flex items-center space-x-2 whitespace-nowrap cursor-pointer" data-tab="rondas">
-          <span>⏱</span>
-          <span>Rondas y Reglas</span>
+          <span>Participantes</span>
         </button>
       </div>
 
@@ -123,26 +126,25 @@ export async function abrirPanelConfig() {
 
   DOM.showLoading('Cargando configuraciones...');
   try {
-    const [cfgRes, cancionesRes, alumnosRes, audRes] = await Promise.all([
-      api.getConfig().catch(() => ({ data: {} })),
-      api.getCanciones().catch(() => ({ data: [] })),
-      api.getAlumnos().catch(() => ({ data: [] })),
-      api.getAudicionesRonda(1).catch(() => ({ data: [] }))
+    const [cfgRes, cancionesRes, alumnosRes, resultsRes, responsesRes] = await Promise.all([
+      api.getConfig(),
+      api.getCanciones(),
+      api.getAlumnos(),
+      api.getResultados(),
+      api.getRespuestasRonda()
     ]);
 
     configTemp = cfgRes.data || {};
+    CONFIG.syncFromBackend(configTemp);
     cancionesTemp = cancionesRes.data || [];
     alumnosTemp = alumnosRes.data || [];
+    resultadosTemp = resultsRes.data || [];
+    respuestasTemp = responsesRes.data || [];
 
-    // Cargar todas las audiciones de las 5 rondas
-    const audicionesTodas = [];
-    for (let r = 1; r <= 5; r++) {
-      try {
-        const rAud = await api.getAudicionesRonda(r);
-        (rAud.data || []).forEach(a => audicionesTodas.push(a));
-      } catch (e) {}
-    }
-    audicionesSorteoTemp = audicionesTodas;
+    const rondas = Array.from({ length: CONFIG.TOTAL_RONDAS }, (_, index) => index + 1);
+    const audicionesPorRonda = await Promise.all(rondas.map(r => api.getAudicionesRonda(r)));
+    audicionesSorteoTemp = audicionesPorRonda.flatMap(response => response.data || []);
+    audicionesGuardadasTemp = [...audicionesSorteoTemp];
 
     modalElement.classList.remove('hidden');
     setTimeout(() => modalElement.classList.remove('opacity-0'), 10);
@@ -189,17 +191,17 @@ function renderTabActual() {
   if (!container) return;
 
   switch (currentTab) {
-    case 'sorteo':
-      renderTabSorteo(container);
+    case 'rondas':
+      renderTabRondas(container);
       break;
     case 'canciones':
       renderTabCanciones(container);
       break;
+    case 'sorteo':
+      renderTabSorteo(container);
+      break;
     case 'participantes':
       renderTabParticipantes(container);
-      break;
-    case 'rondas':
-      renderTabRondas(container);
       break;
   }
 }
@@ -209,6 +211,8 @@ function renderTabActual() {
 // ==============================================================================
 function renderTabSorteo(container) {
   const cancionesActivas = cancionesTemp.filter(c => c.activa !== false);
+  const totalAudiciones = Object.values(CONFIG.ROUNDS)
+    .reduce((total, ronda) => total + ronda.audiciones, 0);
 
   container.innerHTML = `
     <div class="space-y-4">
@@ -217,7 +221,7 @@ function renderTabSorteo(container) {
           <span>🎲</span> Sorteo Aleatorio de Repertorio por Rondas
         </h3>
         <p class="text-xs text-slate-300 mt-1">
-          Distribuye al azar las canciones disponibles en cada una de las 5 rondas, garantizando que no se repitan dentro de la misma ronda. Puedes pulsar el botón tantas veces como quieras para ver diferentes combinaciones y guardar la definitiva.
+          Distribuye las canciones activas entre las ${CONFIG.TOTAL_RONDAS} rondas. No se repite una obra dentro de la misma ronda; puede volver a aparecer en otra ronda.
         </p>
         <div class="mt-3 flex flex-wrap gap-3">
           <button id="btn-generar-sorteo" class="bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-black px-5 py-2.5 rounded-xl shadow-lg transition flex items-center space-x-2 cursor-pointer">
@@ -233,7 +237,7 @@ function renderTabSorteo(container) {
 
       <div class="text-xs text-slate-400 flex items-center justify-between">
         <span>Canciones activas para el sorteo: <strong class="text-white">${cancionesActivas.length}</strong></span>
-        <span>Total audiciones programadas: <strong class="text-white">${audicionesSorteoTemp.length || 17}</strong></span>
+        <span>Total audiciones programadas: <strong class="text-white">${audicionesSorteoTemp.length || totalAudiciones}</strong></span>
       </div>
 
       <!-- Tabla previa del sorteo -->
@@ -263,19 +267,23 @@ function renderTabSorteo(container) {
       return;
     }
 
-    const config = configTemp;
     const nuevasAudiciones = [];
     let ordenGlobal = 1;
 
-    for (let r = 1; r <= 5; r++) {
-      const suffix = r === 5 ? 'FINAL' : String(r);
-      const numAud = config[`NUM_AUDICIONES_RONDA_${suffix}`] || (r <= 2 ? 4 : 3);
-      
-      // Barajar canciones activas (Fisher-Yates)
-      const pool = [...cancionesActivas].sort(() => Math.random() - 0.5);
+    for (let r = 1; r <= CONFIG.TOTAL_RONDAS; r++) {
+      const numAud = CONFIG.ROUNDS[r].audiciones;
+      if (numAud > cancionesActivas.length) {
+        DOM.showToast(
+          `La Ronda ${r} requiere ${numAud} canciones distintas, pero solo hay ${cancionesActivas.length} activas.`,
+          'error',
+          5000
+        );
+        return;
+      }
 
+      const pool = mezclar(cancionesActivas);
       for (let a = 1; a <= numAud; a++) {
-        const cancion = pool[(a - 1) % pool.length];
+        const cancion = pool[a - 1];
         nuevasAudiciones.push({
           ronda: r,
           audicionNum: a,
@@ -288,7 +296,7 @@ function renderTabSorteo(container) {
     }
 
     audicionesSorteoTemp = nuevasAudiciones;
-    document.getElementById('sorteo-preview-body').innerHTML = generarFilasSorteoHTML(nuevasAudiciones);
+    container.querySelector('#sorteo-preview-body').innerHTML = generarFilasSorteoHTML(nuevasAudiciones);
     DOM.showToast('¡Nuevo sorteo aleatorio generado con éxito!', 'success', 2500);
   });
 
@@ -299,16 +307,42 @@ function renderTabSorteo(container) {
       return;
     }
 
+    const changed = !sameSchedule(audicionesGuardadasTemp, audicionesSorteoTemp);
+    const hasRecordedAnswers = resultadosTemp.length > 0 || respuestasTemp.length > 0;
+    const reiniciarResultados = changed && hasRecordedAnswers;
+    if (reiniciarResultados && !window.confirm(
+      'El sorteo actual ya tiene respuestas o resultados. Si guardas este nuevo sorteo, se borrarán los resultados y respuestas de todas las rondas. ¿Continuar?'
+    )) {
+      return;
+    }
+
     DOM.showLoading('Guardando orden de audiciones en Google Sheets...');
     try {
-      await api.guardarAudicionesRonda(audicionesSorteoTemp);
-      
+      const saveRes = await api.guardarAudicionesRonda(audicionesSorteoTemp, reiniciarResultados);
+      const resetDone = Boolean(saveRes.data && saveRes.data.reinicioRealizado);
       // Actualizar estado global y vista principal
       const state = appState.get();
-      const rondaActual = state.rondaActual || 1;
-      const rAudRes = await api.getAudicionesRonda(rondaActual);
-      appState.set({ audicionesRonda: rAudRes.data || [] });
+      const rondaActual = resetDone ? 1 : (state.rondaActual || 1);
+      const [rAudRes, resultadosRes, respuestasRes] = await Promise.all([
+        api.getAudicionesRonda(rondaActual),
+        api.getResultados(),
+        api.getRespuestasRonda(rondaActual)
+      ]);
+      resultadosTemp = resultadosRes.data || [];
+      respuestasTemp = respuestasRes.data || [];
+      audicionesGuardadasTemp = [...audicionesSorteoTemp];
+      appState.set({
+        rondaActual,
+        rondaCerrada: resetDone ? false : Boolean(state.rondaCerrada),
+        audicionActual: 1,
+        audicionesRonda: rAudRes.data || [],
+        resultados: resultadosTemp.filter(resultado => Number(resultado.ronda) === rondaActual),
+        respuestasAudicion: respuestasTemp
+      });
+      const selectRonda = document.getElementById('select-ronda');
+      if (selectRonda) selectRonda.value = String(rondaActual);
       renderAudiciones(appState.get());
+      renderAlumnos(appState.get());
 
       DOM.showToast('✅ Sorteo de canciones guardado correctamente en la nube', 'success');
     } catch (err) {
@@ -325,17 +359,30 @@ function generarFilasSorteoHTML(audiciones) {
     return `<tr><td colspan="5" class="p-4 text-center text-slate-500">No hay sorteo cargado. Pulsa "Generar Nuevo Sorteo Aleatorio".</td></tr>`;
   }
 
-  const duraciones = { 1: '40s', 2: '20s', 3: '10s', 4: '5s', 5: '2s' };
-
-  return audiciones.map((aud, idx) => `
+  return audiciones.map(aud => `
     <tr class="border-b border-slate-800/80 hover:bg-slate-800/40">
       <td class="p-2.5 text-center font-bold text-yellow-400">R${aud.ronda}</td>
       <td class="p-2.5 text-center text-slate-300">Aud ${aud.audicionNum}</td>
-      <td class="p-2.5 font-semibold text-white">${aud.cancionNombre || `Composición #${aud.cancionId}`}</td>
-      <td class="p-2.5 text-center font-mono font-bold text-yellow-300">${aud.cancionCodigo || '----'}</td>
-      <td class="p-2.5 text-center text-slate-400">${duraciones[aud.ronda] || '40s'}</td>
+      <td class="p-2.5 font-semibold text-white">${sanitizeInput(aud.cancionNombre || `Composición #${aud.cancionId}`)}</td>
+      <td class="p-2.5 text-center font-mono font-bold text-yellow-300">${sanitizeInput(aud.cancionCodigo || '----')}</td>
+      <td class="p-2.5 text-center text-slate-400">${CONFIG.ROUNDS[aud.ronda]?.duracion || 0}s</td>
     </tr>
   `).join('');
+}
+
+function mezclar(items) {
+  const result = [...items];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+function sameSchedule(current, next) {
+  if (current.length !== next.length) return false;
+  const currentMap = new Map(current.map(item => [`${item.ronda}:${item.audicionNum}`, String(item.cancionId)]));
+  return next.every(item => currentMap.get(`${item.ronda}:${item.audicionNum}`) === String(item.cancionId));
 }
 
 // ==============================================================================
@@ -612,57 +659,73 @@ function renderTabParticipantes(container) {
 // ==============================================================================
 function renderTabRondas(container) {
   const cfg = configTemp;
+  const totalRondas = Number(cfg.TOTAL_RONDAS) || CONFIG.TOTAL_RONDAS;
+  const rondas = Array.from({ length: totalRondas }, (_, index) => index + 1);
 
   container.innerHTML = `
     <div class="space-y-4">
       
+      <div class="bg-yellow-950/30 border border-yellow-500/40 p-4 rounded-xl">
+        <h3 class="font-bold text-base text-yellow-300">Paso 1: definir las rondas</h3>
+        <p class="text-xs text-slate-300 mt-1">Configura primero cuántas rondas habrá y, para cada una, cuántas audiciones, cuánto dura cada fragmento y cuántos aciertos se necesitan para clasificar.</p>
+        <div class="mt-3 max-w-xs">
+          <label class="block text-xs text-slate-300 mb-1" for="cfg-total-rondas">Cantidad total de rondas (1–20):</label>
+          <input type="number" id="cfg-total-rondas" min="1" max="20" step="1" value="${totalRondas}" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white">
+        </div>
+      </div>
+
       <!-- Datos Generales del Evento -->
       <div class="bg-blue-950/60 border border-blue-800 p-4 rounded-xl">
         <h3 class="font-bold text-sm text-yellow-300 mb-3">🏛 Datos Oficiales del Evento</h3>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
             <label class="block text-xs text-slate-300 mb-1">Nombre Oficial del Evento:</label>
-            <input type="text" id="cfg-nombre-evento" value="${cfg.NOMBRE_EVENTO || 'Certamen Audición Musical 2026'}" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white">
+            <input type="text" id="cfg-nombre-evento" value="${sanitizeInput(cfg.NOMBRE_EVENTO || 'Certamen Audición Musical 2026')}" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white">
           </div>
           <div>
             <label class="block text-xs text-slate-300 mb-1">Compositor Homenajeado:</label>
-            <input type="text" id="cfg-homenajeado" value="${cfg.HOMENAJEADO || 'Johann Strauss'}" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white">
+            <input type="text" id="cfg-homenajeado" value="${sanitizeInput(cfg.HOMENAJEADO || 'Johann Strauss')}" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white">
           </div>
           <div>
             <label class="block text-xs text-slate-300 mb-1">Año del Certamen:</label>
-            <input type="number" id="cfg-anio" value="${cfg.ANIO_CERTAMEN || 2026}" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white">
+            <input type="number" id="cfg-anio" min="2000" max="2100" value="${Number(cfg.ANIO_CERTAMEN) || 2026}" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white">
           </div>
         </div>
       </div>
 
-      <!-- Configuración de las 5 Rondas -->
+      <!-- Configuración dinámica de rondas -->
       <div class="bg-blue-950/60 border border-blue-800 p-4 rounded-xl">
-        <h3 class="font-bold text-sm text-yellow-300 mb-2">⏱ Configuración de Parámetros por Ronda</h3>
-        <p class="text-xs text-slate-400 mb-3">Define la duración en segundos, cantidad de audiciones y mínimo de aciertos para clasificar en cada fase.</p>
+        <h3 class="font-bold text-sm text-yellow-300 mb-2">⏱ Parámetros por ronda</h3>
+        <p class="text-xs text-slate-400 mb-3">El mínimo de clasificación se configura por ronda. Los valores actuales se conservan como predeterminados.</p>
 
-        <div class="grid grid-cols-1 sm:grid-cols-5 gap-3 text-xs">
-          ${[1, 2, 3, 4, 5].map(r => {
-            const suffix = r === 5 ? 'FINAL' : String(r);
-            const dur = cfg[`DURACION_RONDA_${suffix}`] || (r === 1 ? 40 : (r === 2 ? 20 : (r === 3 ? 10 : (r === 4 ? 5 : 2))));
-            const aud = cfg[`NUM_AUDICIONES_RONDA_${suffix}`] || (r <= 2 ? 4 : 3);
-            const min = cfg[`MINIMO_PASAR_RONDA_${suffix}`] || (r === 5 ? 3 : 2);
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+          ${rondas.map(r => {
+            const suffix = getRoundConfigSuffix(r, totalRondas);
+            const defaults = CONFIG.ROUNDS[r] || {
+              duracion: Math.max(2, Math.round(40 / Math.pow(2, r - 1))),
+              audiciones: r <= 2 ? 4 : 3,
+              minimoPasar: r === totalRondas ? 3 : 2
+            };
+            const dur = Number(cfg[`DURACION_RONDA_${suffix}`] ?? cfg[`DURACION_RONDA_${r}`] ?? defaults.duracion);
+            const aud = Number(cfg[`NUM_AUDICIONES_RONDA_${suffix}`] ?? cfg[`NUM_AUDICIONES_RONDA_${r}`] ?? defaults.audiciones);
+            const min = Number(cfg[`MINIMO_PASAR_RONDA_${suffix}`] ?? cfg[`MINIMO_PASAR_RONDA_${r}`] ?? defaults.minimoPasar);
 
             return `
               <div class="bg-slate-900/90 border border-slate-700 p-3 rounded-xl space-y-2">
                 <span class="font-bold text-yellow-400 block text-center border-b border-slate-700 pb-1">
-                  ${r === 5 ? 'Ronda Final' : `Ronda ${r}`}
+                  ${r === totalRondas ? 'Ronda Final' : `Ronda ${r}`}
                 </span>
                 <div>
                   <label class="text-[10px] text-slate-400 block">Duración (seg):</label>
-                  <input type="number" id="cfg-dur-${r}" value="${dur}" class="w-full bg-slate-950 border border-slate-700 rounded p-1 text-center font-bold text-white">
+                  <input type="number" id="cfg-dur-${r}" min="1" max="3600" step="1" value="${dur}" class="w-full bg-slate-950 border border-slate-700 rounded p-1 text-center font-bold text-white">
                 </div>
                 <div>
                   <label class="text-[10px] text-slate-400 block">Audiciones:</label>
-                  <input type="number" id="cfg-aud-${r}" value="${aud}" class="w-full bg-slate-950 border border-slate-700 rounded p-1 text-center font-bold text-white">
+                  <input type="number" id="cfg-aud-${r}" min="1" max="100" step="1" value="${aud}" class="w-full bg-slate-950 border border-slate-700 rounded p-1 text-center font-bold text-white">
                 </div>
                 <div>
                   <label class="text-[10px] text-slate-400 block">Mínimo clasificar:</label>
-                  <input type="number" id="cfg-min-${r}" value="${min}" class="w-full bg-slate-950 border border-slate-700 rounded p-1 text-center font-bold text-yellow-300">
+                  <input type="number" id="cfg-min-${r}" min="1" max="${aud}" step="1" value="${min}" class="w-full bg-slate-950 border border-slate-700 rounded p-1 text-center font-bold text-yellow-300">
                 </div>
               </div>
             `;
@@ -676,15 +739,15 @@ function renderTabRondas(container) {
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
           <div>
             <label class="block text-slate-400 mb-1">🥇 Primer Puesto:</label>
-            <input type="text" id="cfg-premio-1" value="${cfg.PREMIOS_PRIMER_PUESTO || 'Diploma, medalla y premio sorpresa'}" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white">
+            <input type="text" id="cfg-premio-1" value="${sanitizeInput(cfg.PREMIOS_PRIMER_PUESTO || 'Diploma, medalla y premio sorpresa')}" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white">
           </div>
           <div>
             <label class="block text-slate-400 mb-1">🥈 Segundo Puesto:</label>
-            <input type="text" id="cfg-premio-2" value="${cfg.PREMIOS_SEGUNDO_PUESTO || 'Diploma, medalla y premio sorpresa'}" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white">
+            <input type="text" id="cfg-premio-2" value="${sanitizeInput(cfg.PREMIOS_SEGUNDO_PUESTO || 'Diploma, medalla y premio sorpresa')}" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white">
           </div>
           <div>
             <label class="block text-slate-400 mb-1">🥉 Tercer Puesto:</label>
-            <input type="text" id="cfg-premio-3" value="${cfg.PREMIOS_TERCER_PUESTO || 'Diploma y medalla'}" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white">
+            <input type="text" id="cfg-premio-3" value="${sanitizeInput(cfg.PREMIOS_TERCER_PUESTO || 'Diploma y medalla')}" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white">
           </div>
         </div>
       </div>
@@ -692,49 +755,140 @@ function renderTabRondas(container) {
       <div class="flex justify-end pt-2">
         <button id="btn-guardar-reglas-cloud" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-2.5 rounded-xl shadow-lg transition flex items-center space-x-2 cursor-pointer text-xs">
           <span>💾</span>
-          <span>Guardar Configuración en Google Sheets</span>
+          <span>Guardar paso 1 y continuar</span>
         </button>
       </div>
 
     </div>
   `;
 
+  container.querySelector('#cfg-total-rondas').addEventListener('change', event => {
+    const newTotal = Number(event.currentTarget.value);
+    if (!Number.isInteger(newTotal) || newTotal < 1 || newTotal > 20) {
+      DOM.showToast('La cantidad de rondas debe ser un entero entre 1 y 20.', 'warning');
+      event.currentTarget.value = String(totalRondas);
+      return;
+    }
+
+    guardarValoresFormularioRondas(container, totalRondas);
+    configTemp.TOTAL_RONDAS = newTotal;
+    renderTabRondas(container);
+  });
+
   // Evento: Guardar Configuración en Google Sheets
   container.querySelector('#btn-guardar-reglas-cloud').addEventListener('click', async () => {
+    const total = Number(container.querySelector('#cfg-total-rondas').value);
+    if (!Number.isInteger(total) || total < 1 || total > 20) {
+      DOM.showToast('La cantidad de rondas debe ser un entero entre 1 y 20.', 'warning');
+      return;
+    }
+
     const paramsUpdate = {
+      TOTAL_RONDAS: total,
       NOMBRE_EVENTO: container.querySelector('#cfg-nombre-evento').value.trim(),
       HOMENAJEADO: container.querySelector('#cfg-homenajeado').value.trim(),
-      ANIO_CERTAMEN: parseInt(container.querySelector('#cfg-anio').value, 10) || 2026,
+      ANIO_CERTAMEN: Number(container.querySelector('#cfg-anio').value),
       PREMIOS_PRIMER_PUESTO: container.querySelector('#cfg-premio-1').value.trim(),
       PREMIOS_SEGUNDO_PUESTO: container.querySelector('#cfg-premio-2').value.trim(),
       PREMIOS_TERCER_PUESTO: container.querySelector('#cfg-premio-3').value.trim()
     };
 
-    [1, 2, 3, 4, 5].forEach(r => {
-      const suffix = r === 5 ? 'FINAL' : String(r);
-      paramsUpdate[`DURACION_RONDA_${suffix}`] = parseInt(container.querySelector(`#cfg-dur-${r}`).value, 10);
-      paramsUpdate[`NUM_AUDICIONES_RONDA_${suffix}`] = parseInt(container.querySelector(`#cfg-aud-${r}`).value, 10);
-      paramsUpdate[`MINIMO_PASAR_RONDA_${suffix}`] = parseInt(container.querySelector(`#cfg-min-${r}`).value, 10);
+    if (!Number.isInteger(paramsUpdate.ANIO_CERTAMEN) || paramsUpdate.ANIO_CERTAMEN < 2000 || paramsUpdate.ANIO_CERTAMEN > 2100) {
+      DOM.showToast('El año del certamen debe estar entre 2000 y 2100.', 'warning');
+      return;
+    }
 
-      // Sincronizar en memoria de CONFIG frontend
-      if (CONFIG.ROUNDS[r]) {
-        CONFIG.ROUNDS[r].duracion = paramsUpdate[`DURACION_RONDA_${suffix}`];
-        CONFIG.ROUNDS[r].audiciones = paramsUpdate[`NUM_AUDICIONES_RONDA_${suffix}`];
-        CONFIG.ROUNDS[r].minimoPasar = paramsUpdate[`MINIMO_PASAR_RONDA_${suffix}`];
+    for (let r = 1; r <= total; r++) {
+      const duration = Number(container.querySelector(`#cfg-dur-${r}`).value);
+      const auditions = Number(container.querySelector(`#cfg-aud-${r}`).value);
+      const minimum = Number(container.querySelector(`#cfg-min-${r}`).value);
+
+      if (!Number.isInteger(duration) || duration < 1 || duration > 3600 ||
+          !Number.isInteger(auditions) || auditions < 1 || auditions > 100 ||
+          !Number.isInteger(minimum) || minimum < 1 || minimum > auditions) {
+        DOM.showToast(`Revisa los valores de la Ronda ${r}: duración 1–3600, audiciones 1–100 y mínimo 1–audiciones.`, 'warning', 5000);
+        return;
       }
-    });
+
+      const suffix = getRoundConfigSuffix(r, total);
+      paramsUpdate[`DURACION_RONDA_${suffix}`] = duration;
+      paramsUpdate[`NUM_AUDICIONES_RONDA_${suffix}`] = auditions;
+      paramsUpdate[`MINIMO_PASAR_RONDA_${suffix}`] = minimum;
+    }
+
+    const rulesChanged = total !== CONFIG.TOTAL_RONDAS ||
+      Object.entries(paramsUpdate).some(([key, value]) =>
+        /^(DURACION_RONDA_|NUM_AUDICIONES_RONDA_|MINIMO_PASAR_RONDA_)/.test(key) &&
+        String(configTemp[key] === undefined ? '' : configTemp[key]) !== String(value)
+      );
+    const hasActivity = resultadosTemp.length > 0 || respuestasTemp.length > 0;
+    const reiniciarResultados = rulesChanged && hasActivity;
+    if (reiniciarResultados && !window.confirm(
+      'Cambiar las reglas reiniciará el sorteo, las respuestas y los resultados guardados de todas las rondas. ¿Continuar?'
+    )) {
+      return;
+    }
 
     DOM.showLoading('Actualizando parámetros en Google Sheets...');
     try {
-      await api.guardarConfigLote(paramsUpdate);
+      await api.guardarConfigLote(paramsUpdate, reiniciarResultados);
       configTemp = { ...configTemp, ...paramsUpdate };
+      CONFIG.syncFromBackend(configTemp);
+      if (rulesChanged) {
+        audicionesSorteoTemp = [];
+        audicionesGuardadasTemp = [];
+      }
+      if (reiniciarResultados) {
+        respuestasTemp = [];
+        resultadosTemp = [];
+      }
+      const state = appState.get();
+      const currentRound = Number(state.rondaActual) || 1;
+      const nextRound = reiniciarResultados || currentRound > total ? 1 : currentRound;
+      if (rulesChanged) {
+        appState.set({
+          rondaActual: nextRound,
+          rondaCerrada: false,
+          audicionActual: 1,
+          audicionesRonda: [],
+          resultados: reiniciarResultados
+            ? []
+            : (state.resultados || []).filter(resultado => Number(resultado.ronda) === nextRound),
+          respuestasAudicion: reiniciarResultados ? [] : []
+        });
+      }
+      actualizarSelectorRondas();
+      const selectRonda = document.getElementById('select-ronda');
+      if (selectRonda) selectRonda.value = String(nextRound);
       renderAudiciones(appState.get());
       renderAlumnos(appState.get());
-      DOM.showToast('✅ Parámetros de rondas actualizados exitosamente en Google Sheets', 'success');
+      DOM.showToast('✅ Paso 1 guardado. Continúa con canciones y luego realiza el sorteo.', 'success', 4500);
     } catch (err) {
       DOM.showToast('Error al actualizar configuración: ' + err.message, 'error');
     } finally {
       DOM.hideLoading();
     }
   });
+}
+
+function guardarValoresFormularioRondas(container, totalRondas) {
+  for (let r = 1; r <= totalRondas; r++) {
+    const duration = container.querySelector(`#cfg-dur-${r}`);
+    const auditions = container.querySelector(`#cfg-aud-${r}`);
+    const minimum = container.querySelector(`#cfg-min-${r}`);
+    const suffix = getRoundConfigSuffix(r, totalRondas);
+    if (duration) configTemp[`DURACION_RONDA_${suffix}`] = Number(duration.value);
+    if (auditions) configTemp[`NUM_AUDICIONES_RONDA_${suffix}`] = Number(auditions.value);
+    if (minimum) configTemp[`MINIMO_PASAR_RONDA_${suffix}`] = Number(minimum.value);
+  }
+}
+
+function actualizarSelectorRondas() {
+  const select = document.getElementById('select-ronda');
+  if (!select) return;
+  const currentRound = Number(select.value);
+  select.innerHTML = Object.entries(CONFIG.ROUNDS).map(([round, config]) =>
+    `<option value="${round}">${sanitizeInput(config.nombre)} - ${config.audiciones} audiciones de ${config.duracion}s (mínimo: ${config.minimoPasar})</option>`
+  ).join('');
+  select.value = String(currentRound <= CONFIG.TOTAL_RONDAS ? currentRound : 1);
 }

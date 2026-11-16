@@ -25,6 +25,10 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+#toast {
+  z-index: 60;
+}
+
 h1, h2, h3, .font-display {
   font-family: var(--font-display);
 }

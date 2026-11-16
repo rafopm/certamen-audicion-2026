@@ -24,13 +24,13 @@
 - **Backend:** Google Apps Script (`Código.gs`) publicado como Web App REST JSON.
 - **Base de Datos:** Google Sheets con 5 hojas maestras.
 - **Almacenamiento de Audios:** Google Drive (soporte para streaming directo y fallback a Base64).
-- **Proyección:** `proyector.html` con polling cada 2s y efectos de confeti.
+- **Proyección:** `proyector.html` recibe órdenes de reproducción, carga el audio y sincroniza la cuenta regresiva con el panel.
 
 ---
 
 ## 📊 Estructura de Google Sheets
 
-Crea un libro en Google Sheets con exactamente estas **5 hojas**:
+Crea un libro en Google Sheets con estas **7 hojas**. La función `setupInitialSheets` crea las hojas faltantes y sus encabezados.
 
 ### 📑 1. Hoja: `Config`
 Esta hoja es la **fuente de verdad** para todos los parámetros del certamen:
@@ -111,13 +111,30 @@ Ejemplo:
 Cabeceras en Fila 1:  
 `Alumno_ID` | `Alumno_Nombre` | `Grado` | `Ronda` | `Aciertos` | `Eliminado` | `Puntos_Total` | `Timestamp` | `Ronda_Eliminacion`
 
-*(Esta hoja se llena automáticamente cuando el jurado guarda aciertos o finaliza una ronda).*
+*(Se actualiza al guardar las respuestas y se completa al finalizar la ronda.)*
 
-### 📑 6. Hoja: `Log_Reproducciones` (Auditoría en Tiempo Real)
+### 📑 6. Hoja: `Respuestas_Audicion`
+Cabeceras en Fila 1:  
+`Alumno_ID` | `Ronda` | `Audicion_Num` | `Respuesta` | `Correcto` | `Fecha_Hora`
+
+*(Guarda una respuesta correcta o un error por participante y audición. Una respuesta vacía también se registra como error.)*
+
+### 📑 7. Hoja: `Log_Reproducciones` (Auditoría en Tiempo Real)
 Cabeceras en Fila 1:  
 `ID` | `Ronda` | `Audicion_Num` | `Cancion_ID` | `Cancion_Nombre` | `Cancion_Codigo` | `Segundo_Inicio` | `Segundo_Fin` | `Duracion_Seg` | `Fecha_Hora` | `Timestamp`
 
 *(Registra automáticamente cada vez que se reproduce una audición: qué obra sonó, su código oficial, de qué segundo a qué segundo se escuchó y la fecha y hora exacta con zona horaria de Lima, Perú).*
+
+## 🧭 Flujo del certamen
+
+1. En **Rondas y reglas**, define la cantidad de rondas y, para cada una, las audiciones, duración y mínimo para clasificar. Los valores actuales aparecen como editables.
+2. Guarda las canciones activas en **Canciones**.
+3. En **Sorteo de canciones**, genera y guarda la distribución. Una canción no se repite dentro de una ronda. Si cambias el sorteo después de guardar resultados, confirma el reinicio antes de continuar.
+4. Durante una ronda, reproduce una audición, revisa las pizarras y guarda una respuesta por cada participante elegible. Los campos vacíos o incorrectos se guardan como error.
+5. El botón **Siguiente** solo se habilita cuando las respuestas están guardadas y sin cambios pendientes. La ronda no puede finalizar hasta completar todas sus audiciones.
+6. Al finalizar la ronda se calcula quién clasifica según su mínimo configurado. El sistema avanza a la siguiente ronda; para modificar una ronda cerrada, usa **Resetear ronda**, que también borra los datos de las rondas posteriores.
+
+Al cambiar reglas con actividad registrada, el panel solicitará confirmar el reinicio de respuestas y resultados. El sorteo también se limpia y debe generarse de nuevo.
 
 ---
 
@@ -127,15 +144,17 @@ Cabeceras en Fila 1:
 2. Reemplaza cualquier código existente pegando íntegramente el archivo `Codigo.gs` del repositorio.
 3. **Inicialización automática (Opcional pero muy útil):**
    - En la barra superior de Apps Script, selecciona la función `setupInitialSheets` en el menú desplegable y presiona **Ejecutar**.
-   - Concede los permisos que Google solicite. Esta función creará o verificará las 5 hojas y sus valores predeterminados.
+   - Concede los permisos que Google solicite. Esta función creará o verificará las hojas y sus valores predeterminados.
 4. **Despliegue como Web App:**
    - Haz clic en el botón azul superior **Implementar** (Deploy) > **Nueva implementación** (New deployment).
    - Haz clic en el engranaje ⚙️ junto a "Seleccionar tipo" y elige **Aplicación web**.
-   - **Descripción:** `Certamen 2026 v1.0`
+   - **Descripción:** `Certamen 2026`
    - **Ejecutar como:** `Yo (tu_correo@gmail.com)`
    - **Quién tiene acceso:** `Cualquiera` (*Anyone* - fundamental para que la app web y el proyector puedan acceder sin iniciar sesión).
    - Haz clic en **Implementar**.
 5. Copia la **URL de la aplicación web** generada (termina en `/exec`).
+
+Cada vez que actualices `Codigo.gs`, implementa una nueva versión de la aplicación web para que el panel use los endpoints de respuestas y validaciones actuales.
 
 ---
 
@@ -153,7 +172,7 @@ Para reproducir los audios sin bloqueos:
      `1A2b3C4d5E6F7G8H9I0J`
 5. Pega ese código en la columna `Archivo_Drive_ID` de la hoja `Canciones`.
 
-> **Manejo Dual de Audio:** El sistema intenta primero la reproducción directa vía Drive URL (rápida). Si las políticas de CORS de Drive fallan en la red del colegio, el sistema solicita automáticamente a Apps Script el audio codificado en Base64 (`data:audio/mpeg;base64,...`).
+El panel envía la orden al proyector, que descarga el audio desde Apps Script como Base64 y lo conserva temporalmente en caché. La caché mantiene como máximo una pista. Cuando termina la carga, el proyector inicia una cuenta regresiva de 5 segundos; el panel sincroniza su temporizador con esa hora. El audio suena únicamente en la computadora conectada al proyector.
 
 ---
 
@@ -200,6 +219,9 @@ npm run deploy
 
 Para la pantalla gigante del auditorio:
 - Accede a `proyector.html` (o haz clic en el botón **Abrir Proyector** en la cabecera).
+- En esa computadora, pulsa una vez **Activar audio** para permitir la reproducción del navegador.
+- Mantén esa página abierta durante el certamen. Al pulsar **Reproducir Audición** en el panel, la pantalla muestra la carga del archivo y, al terminar, la cuenta regresiva de 5 segundos antes de reproducir.
+- El panel permite detener la audición y registra el rango reproducido en Google Sheets al terminar.
 - La pantalla cuenta con:
   - Temporizador gigante con tipografía clásica.
   - Indicador de estado en tiempo real (**EN VIVO**).
@@ -227,10 +249,10 @@ Para la pantalla gigante del auditorio:
 - **Causa:** Apps Script no fue desplegado con acceso para "Cualquiera" (*Anyone*).
 - **Solución:** Ve a Apps Script > **Implementar** > **Gestionar implementaciones** > Editar > asegúrate de que **Quién tiene acceso** sea **Cualquiera**. Cada vez que modifiques `Código.gs`, debes crear una **Nueva versión** del despliegue.
 
-### 2. Los audios no suenan o quedan en carga infinita
-- **Causa 1:** El archivo de Drive no tiene permisos públicos de lectura ("Cualquier persona con el enlace").
-- **Causa 2:** Restricciones de red del colegio hacia enlaces de descarga de Drive.
-- **Solución:** El frontend activa automáticamente el fallback Base64. Adicionalmente, si ningún audio está configurado, la aplicación emite un tono sintetizado y corre el temporizador para que el certamen nunca se detenga.
+### 2. Los audios no suenan o quedan en carga
+- Confirma que `proyector.html` esté abierto y que se haya pulsado **Activar audio** en esa computadora.
+- Verifica que el archivo de Drive permita lectura a **Cualquier persona con el enlace** y que el proyecto de Apps Script esté desplegado con la versión más reciente de `Codigo.gs`.
+- Revisa el mensaje de estado en la pantalla del proyector para identificar si falló la descarga, la decodificación o el inicio de reproducción.
 
 ### 3. GitHub Pages muestra una página en blanco
 - **Causa:** El path `base` en `vite.config.js` no coincide con el subpath del repositorio.

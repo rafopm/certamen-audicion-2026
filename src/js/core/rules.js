@@ -36,6 +36,20 @@ export function getConfigRonda(ronda) {
   return CONFIG.ROUNDS[ronda] || null;
 }
 
+export function getResponsesForAudition(responses, auditionNum) {
+  return new Map(
+    (Array.isArray(responses) ? responses : [])
+      .filter(response => Number(response.audicionNum) === Number(auditionNum))
+      .map(response => [String(response.alumnoId), response])
+  );
+}
+
+export function isAuditionSaved(responses, auditionNum, participantIds) {
+  if (!Array.isArray(participantIds) || participantIds.length === 0) return false;
+  const saved = getResponsesForAudition(responses, auditionNum);
+  return participantIds.every(id => saved.has(String(id)));
+}
+
 /**
  * Calcula el ranking final ordenado por puntaje
  */

@@ -6,11 +6,13 @@ class AppState {
   constructor() {
     this.state = {
       rondaActual: 1,
+      rondaCerrada: false,
       audicionActual: 0,
       alumnos: [],
       canciones: [],
       configRonda: null,
       resultados: {},
+      respuestasAudicion: [],
       isLoading: false,
       error: null
     };
