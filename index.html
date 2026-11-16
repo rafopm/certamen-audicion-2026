@@ -10,8 +10,8 @@
   <script src="https://cdn.tailwindcss.com"></script>
   
   <!-- Estilos personalizados -->
-  <script type="module" crossorigin src="/assets/main-D8sV6Uy1.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/formatters-BdfdXB5n.js">
+  <script type="module" crossorigin src="/assets/main-DuIvpkX0.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/formatters-CH_PCQn-.js">
   <link rel="stylesheet" crossorigin href="/assets/formatters-ZTsCnJV1.css">
 </head>
 <body class="bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 min-h-screen text-white flex flex-col justify-between selection:bg-yellow-400 selection:text-slate-950">
@@ -82,11 +82,7 @@
         </span>
       </div>
       <select id="select-ronda" class="mt-3 bg-slate-800 text-yellow-300 border border-slate-700 font-semibold p-3 rounded-xl w-full text-base focus:ring-2 focus:ring-yellow-400 focus:outline-none cursor-pointer">
-        <option value="1">Ronda 1 - 4 audiciones de 40s (Mínimo: 2 aciertos)</option>
-        <option value="2">Ronda 2 - 4 audiciones de 20s (Mínimo: 2 aciertos)</option>
-        <option value="3">Ronda 3 - 3 audiciones de 10s (Mínimo: 2 aciertos)</option>
-        <option value="4">Ronda 4 - 3 audiciones de 5s (Mínimo: 2 aciertos)</option>
-        <option value="5">Ronda Final - 3 audiciones de 2s (Mínimo: 3 aciertos)</option>
+        <option value="1">Cargando rondas...</option>
       </select>
       <div id="ronda-info-detalles"></div>
     </section>
@@ -103,10 +99,11 @@
           <span class="text-xs text-yellow-400 uppercase font-semibold">Audición en Curso:</span>
           <span id="audicion-numero" class="text-2xl font-black text-white ml-1">1</span>
         </div>
-        <button id="btn-next-audicion" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-700 transition cursor-pointer">
+        <button id="btn-next-audicion" disabled class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-700 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
           Siguiente ▶
         </button>
       </div>
+      <p id="audicion-estado-guardado" class="text-xs text-amber-300 mb-3">Respuestas pendientes de guardar</p>
 
       <!-- Tarjeta Exclusiva del Jurado: Validación de Pizarras -->
       <div id="admin-validacion-pizarra" class="my-3 p-4 bg-slate-950/90 border-2 border-yellow-500/50 rounded-xl max-w-xl mx-auto shadow-xl">
@@ -176,12 +173,9 @@
         </div>
         
         <div class="flex items-center gap-2">
-          <button id="btn-marcar-todos" class="bg-slate-800 hover:bg-slate-700 text-xs text-yellow-300 font-semibold px-3 py-2 rounded-lg border border-slate-700 transition cursor-pointer">
-            ✓ Marcar Todos
-          </button>
           <button id="btn-guardar-aciertos" class="bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-black px-6 py-2.5 rounded-xl shadow-lg transition flex items-center space-x-2 cursor-pointer">
             <span>💾</span>
-            <span>Guardar Aciertos</span>
+            <span>Guardar respuestas de esta audición</span>
           </button>
         </div>
       </div>
@@ -193,7 +187,7 @@
 
     <!-- Controles de Ronda -->
     <section class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-      <button id="btn-finalizar-ronda" class="bg-rose-700 hover:bg-rose-600 text-white font-bold px-6 py-3.5 rounded-xl shadow-lg transition flex items-center justify-center space-x-2 cursor-pointer">
+      <button id="btn-finalizar-ronda" disabled class="bg-rose-700 hover:bg-rose-600 text-white font-bold px-6 py-3.5 rounded-xl shadow-lg transition flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
         <span>✓</span>
         <span>Finalizar Ronda</span>
       </button>
