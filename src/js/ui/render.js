@@ -15,6 +15,7 @@ export function renderAlumnos(arg1, arg2) {
   let respuestasAudicion = [];
   let rondaActual = 1;
   let rondaCerrada = false;
+  let soloLectura = false;
   let totalAudiciones = 4;
   let audicionActualNum = 1;
 
@@ -24,6 +25,7 @@ export function renderAlumnos(arg1, arg2) {
     respuestasAudicion = Array.isArray(arg1.respuestasAudicion) ? arg1.respuestasAudicion : [];
     rondaActual = arg1.rondaActual || 1;
     rondaCerrada = Boolean(arg1.rondaCerrada);
+    soloLectura = Boolean(arg1.soloLectura);
     audicionActualNum = arg1.audicionActual || 1;
     const configRonda = CONFIG.ROUNDS[rondaActual] || { audiciones: 4 };
     totalAudiciones = configRonda.audiciones;
@@ -41,15 +43,6 @@ export function renderAlumnos(arg1, arg2) {
   const container = DOM.get('listaAlumnos');
   if (!container) return;
 
-  if (alumnos.length === 0) {
-    container.innerHTML = `
-      <div class="col-span-full text-center py-8 text-blue-200">
-        <p class="text-lg">No hay alumnos registrados o activos para este certamen.</p>
-      </div>
-    `;
-    return;
-  }
-
   // Mapear resultados de la ronda actual y eliminaciones previas
   const resMap = {};
   const eliminacionesMap = {};
@@ -65,6 +58,21 @@ export function renderAlumnos(arg1, arg2) {
       }
     }
   });
+
+  alumnos = alumnos.filter(alumno => {
+    const rawRound = alumno.rondaEliminacion || eliminacionesMap[String(alumno.id)];
+    const eliminationRound = Number(rawRound);
+    return !Number.isInteger(eliminationRound) || eliminationRound >= rondaActual;
+  });
+
+  if (alumnos.length === 0) {
+    container.innerHTML = `
+      <div class="col-span-full text-center py-8 text-blue-200">
+        <p class="text-lg">No hay participantes que hayan clasificado a esta ronda.</p>
+      </div>
+    `;
+    return;
+  }
 
   const configRonda = CONFIG.ROUNDS[rondaActual] || { minimoPasar: 2 };
   const minPasar = configRonda.minimoPasar;
@@ -106,7 +114,7 @@ export function renderAlumnos(arg1, arg2) {
       const audicionRespuesta = respuestasAlumno.find(response => Number(response.audicionNum) === audNum);
       const isChecked = audicionRespuesta && (audicionRespuesta.correcto === true || String(audicionRespuesta.correcto).toLowerCase() === 'true');
       const isAudicionActual = audNum === audicionActualNum;
-      const isDisabled = rondaCerrada || eliminadoAnteriormente || !isAudicionActual;
+      const isDisabled = soloLectura || rondaCerrada || eliminadoAnteriormente || !isAudicionActual;
 
       checkboxesHtml += `
         <label class="flex flex-col items-center justify-center cursor-pointer p-1.5 rounded-lg border transition select-none ${isAudicionActual ? 'bg-yellow-500/20 border-yellow-400 shadow-md ring-1 ring-yellow-400' : 'bg-blue-950/60 hover:bg-blue-900 border-blue-700/50'}">
@@ -157,7 +165,7 @@ export function renderAlumnos(arg1, arg2) {
               class="input-pizarra-alumno bg-slate-950 text-yellow-300 border border-slate-700 uppercase font-mono text-xs px-2.5 py-1 rounded-lg w-full focus:ring-1 focus:ring-yellow-400 focus:outline-none"
               data-alumno-id="${sanitizeInput(alumno.id)}"
               data-audicion="${audicionActualNum}"
-              ${rondaCerrada ? 'disabled' : ''}
+              ${soloLectura || rondaCerrada ? 'disabled' : ''}
               value="${sanitizeInput(respuestasAlumno.find(response => Number(response.audicionNum) === audicionActualNum)?.respuesta || '')}"
             />
           </div>
@@ -174,11 +182,13 @@ export function renderAudiciones(arg1, arg2) {
   let audiciones = [];
   let ronda = 1;
   let audicionActualNum = 1;
+  let soloLectura = false;
 
   if (arg1 && arg1.rondaActual !== undefined) {
     ronda = arg1.rondaActual;
     audiciones = arg1.audicionesRonda || arg1.audiciones || [];
     audicionActualNum = arg1.audicionActual || 1;
+    soloLectura = Boolean(arg1.soloLectura);
   } else {
     audiciones = Array.isArray(arg1) ? arg1 : [];
     ronda = arg2 || 1;
@@ -199,6 +209,10 @@ export function renderAudiciones(arg1, arg2) {
   const duracionEl = document.getElementById('admin-seg-duracion');
 
   const configRonda = CONFIG.ROUNDS[ronda] || { duracion: 40, audiciones: 4 };
+  const badgeRango = document.getElementById('badge-rango-reproduccion');
+  if (badgeRango) {
+    badgeRango.textContent = `📍 Rango: de 0s a ${configRonda.duracion || 40}s`;
+  }
 
   if (nombreEl) {
     nombreEl.textContent = audData ? (audData.cancionNombre || `Composición #${audData.cancionId}`) : 'Composición no asignada';
@@ -218,6 +232,7 @@ export function renderAudiciones(arg1, arg2) {
         <span>⏱ <strong>Duración:</strong> ${configRonda.duracion || 40}s por audición</span>
         <span>🎯 <strong>Mínimo para clasificar:</strong> ${configRonda.minimoPasar || 2} aciertos</span>
         <span>🎼 <strong>Total audiciones:</strong> ${configRonda.audiciones || 4}</span>
+        ${soloLectura ? '<span class="font-bold text-cyan-300">Consulta histórica · solo lectura</span>' : ''}
       </div>
     `;
   }
@@ -239,11 +254,10 @@ export function renderRanking(ranking) {
     return;
   }
 
-  const top3 = ranking.slice(0, 3);
-  const podiumHtml = renderTopTres(top3);
+  const podiumHtml = renderTopTres(ranking.filter((item, index) => getRankPosition(item, index) <= 3));
 
   const rowsHtml = ranking.map((item, idx) => {
-    const pos = idx + 1;
+    const pos = getRankPosition(item, idx);
     let posBadge = `<span class="font-bold text-slate-300">${formatRanking(pos)}</span>`;
     let rowClass = 'hover:bg-slate-700/50';
 
@@ -261,6 +275,7 @@ export function renderRanking(ranking) {
     const estadoDetalle = item.eliminado 
       ? `Eliminado en Ronda ${item.rondaEliminacion || 1}` 
       : `Activo (Ronda ${item.rondaMax || 1})`;
+    const trayectoria = renderTrayectoriaRondas(item);
 
     return `
       <tr class="border-b border-slate-700/60 ${rowClass} transition-colors">
@@ -274,6 +289,9 @@ export function renderRanking(ranking) {
           <span class="inline-block px-2.5 py-1 rounded-full text-xs font-semibold ${item.eliminado ? 'bg-rose-950 text-rose-300 border border-rose-800' : 'bg-emerald-950 text-emerald-300 border border-emerald-800'}">
             ${estadoDetalle}
           </span>
+        </td>
+        <td class="p-3">
+          <div class="flex flex-wrap gap-1">${trayectoria}</div>
         </td>
         <td class="p-3 text-right font-bold text-yellow-400 text-lg">
           ${item.puntosTotal || 0}
@@ -293,6 +311,7 @@ export function renderRanking(ranking) {
             <th class="p-3">Participante</th>
             <th class="p-3">Grado</th>
             <th class="p-3 text-center">Estado del Participante</th>
+            <th class="p-3">Trayectoria por rondas</th>
             <th class="p-3 text-right">Puntos Totales</th>
           </tr>
         </thead>
@@ -304,77 +323,63 @@ export function renderRanking(ranking) {
   `;
 }
 
+function getRankPosition(item, index) {
+  const position = Number(item.posicion);
+  return Number.isInteger(position) && position > 0 ? position : index + 1;
+}
+
+function renderTrayectoriaRondas(item) {
+  const details = item.detalleRondas || {};
+  return Array.from({ length: CONFIG.TOTAL_RONDAS }, (_, index) => {
+    const round = index + 1;
+    const key = `ronda_${round}`;
+    const reached = Object.prototype.hasOwnProperty.call(details, key);
+    if (!reached) {
+      if (round <= Number(item.rondaMax || 0)) {
+        return `<span class="rounded-md bg-cyan-950 px-2 py-1 text-[10px] text-cyan-200" title="Llegó a la Ronda ${round}; aún no registra puntaje">R${round} en curso</span>`;
+      }
+      return `<span class="rounded-md bg-slate-800 px-2 py-1 text-[10px] text-slate-500" title="No llegó a la Ronda ${round}">R${round} —</span>`;
+    }
+
+    const score = sanitizeInput(details[key]);
+    const total = CONFIG.ROUNDS[round] ? CONFIG.ROUNDS[round].audiciones : '?';
+    return `<span class="rounded-md bg-emerald-950 px-2 py-1 text-[10px] text-emerald-200" title="Aciertos en Ronda ${round}">R${round} ${score}/${total}</span>`;
+  }).join('');
+}
+
 /**
  * Renderiza el podio visual TOP 3
  */
 export function renderTopTres(topTres) {
   if (!topTres || topTres.length === 0) return '';
 
-  const [primero, segundo, tercero] = topTres;
+  const styles = {
+    1: { medal: '🥇', className: 'border-yellow-400 bg-yellow-950/50 text-yellow-200' },
+    2: { medal: '🥈', className: 'border-slate-300 bg-slate-800/80 text-slate-200' },
+    3: { medal: '🥉', className: 'border-amber-600 bg-amber-950/50 text-amber-200' }
+  };
+  const columns = [2, 1, 3].map(position => {
+    const members = topTres.filter((item, index) => getRankPosition(item, index) === position);
+    const style = styles[position];
+    if (members.length === 0) return '<div class="min-h-24"></div>';
 
-  return `
-    <div class="podium-container flex justify-center items-end gap-3 md:gap-6 my-8 px-2 max-w-2xl mx-auto">
-      
-      <!-- 2do Puesto -->
-      <div class="flex-1 text-center order-1 transform transition hover:-translate-y-1">
-        ${segundo ? `
-          <div class="bg-slate-800/90 border-2 border-slate-300 rounded-t-2xl p-4 shadow-xl flex flex-col items-center">
-            <div class="w-12 h-12 rounded-full bg-slate-300 text-slate-950 font-black text-2xl flex items-center justify-center shadow-lg mb-2">
-              🥈
+    return `
+      <div class="rounded-t-2xl border-2 ${style.className} p-4 text-center shadow-xl">
+        <div class="mb-3 text-3xl">${style.medal} <span class="text-xl font-black">${position}°</span></div>
+        <div class="space-y-3">
+          ${members.map(item => `
+            <div class="rounded-xl bg-slate-950/50 p-3">
+              <p class="font-extrabold text-white">${sanitizeInput(formatNombre(item.nombre))}</p>
+              <p class="text-xs text-slate-300">${sanitizeInput(item.grado || '')}</p>
+              <p class="mt-1 font-black text-yellow-300">${Number(item.puntosTotal) || 0} pts</p>
             </div>
-            <p class="font-bold text-white text-sm md:text-base line-clamp-1">${sanitizeInput(formatNombre(segundo.nombre))}</p>
-            <p class="text-xs text-slate-300 mb-2">${sanitizeInput(segundo.grado || '')}</p>
-            <div class="bg-slate-900/80 text-yellow-400 px-3 py-1 rounded-full text-sm font-extrabold border border-slate-700">
-              ${segundo.puntosTotal || 0} pts
-            </div>
-            <div class="h-20 md:h-28 w-full bg-gradient-to-t from-slate-700 to-slate-600 rounded-lg mt-3 flex items-center justify-center text-slate-200 font-black text-2xl shadow-inner">
-              2°
-            </div>
-          </div>
-        ` : '<div class="h-32"></div>'}
+          `).join('')}
+        </div>
       </div>
+    `;
+  }).join('');
 
-      <!-- 1er Puesto (Centro y más alto) -->
-      <div class="flex-1 text-center order-2 transform scale-105 transition hover:scale-110 z-10">
-        ${primero ? `
-          <div class="bg-gradient-to-b from-yellow-950/80 to-slate-900 border-2 border-yellow-400 rounded-t-2xl p-5 shadow-2xl flex flex-col items-center relative overflow-hidden">
-            <div class="absolute top-0 right-0 left-0 h-1 bg-yellow-400"></div>
-            <div class="w-16 h-16 rounded-full bg-yellow-400 text-slate-950 font-black text-3xl flex items-center justify-center shadow-yellow-500/50 shadow-lg mb-2 animate-bounce">
-              👑
-            </div>
-            <p class="font-extrabold text-yellow-300 text-base md:text-lg line-clamp-1">${sanitizeInput(formatNombre(primero.nombre))}</p>
-            <p class="text-xs text-yellow-200/80 mb-2">${sanitizeInput(primero.grado || '')}</p>
-            <div class="bg-yellow-500 text-slate-950 px-4 py-1.5 rounded-full text-sm font-black shadow-md">
-              ${primero.puntosTotal || 0} pts
-            </div>
-            <div class="h-28 md:h-36 w-full bg-gradient-to-t from-yellow-600 to-yellow-400 rounded-lg mt-3 flex items-center justify-center text-slate-950 font-black text-3xl shadow-lg">
-              🥇 1°
-            </div>
-          </div>
-        ` : '<div class="h-44"></div>'}
-      </div>
-
-      <!-- 3er Puesto -->
-      <div class="flex-1 text-center order-3 transform transition hover:-translate-y-1">
-        ${tercero ? `
-          <div class="bg-slate-800/90 border-2 border-amber-600 rounded-t-2xl p-4 shadow-xl flex flex-col items-center">
-            <div class="w-12 h-12 rounded-full bg-amber-700 text-white font-black text-2xl flex items-center justify-center shadow-lg mb-2">
-              🥉
-            </div>
-            <p class="font-bold text-white text-sm md:text-base line-clamp-1">${sanitizeInput(formatNombre(tercero.nombre))}</p>
-            <p class="text-xs text-slate-300 mb-2">${sanitizeInput(tercero.grado || '')}</p>
-            <div class="bg-slate-900/80 text-yellow-400 px-3 py-1 rounded-full text-sm font-extrabold border border-slate-700">
-              ${tercero.puntosTotal || 0} pts
-            </div>
-            <div class="h-14 md:h-20 w-full bg-gradient-to-t from-amber-800 to-amber-700 rounded-lg mt-3 flex items-center justify-center text-amber-200 font-black text-2xl shadow-inner">
-              3°
-            </div>
-          </div>
-        ` : '<div class="h-24"></div>'}
-      </div>
-
-    </div>
-  `;
+  return `<div class="podium-container grid grid-cols-1 md:grid-cols-3 items-end gap-3 md:gap-6 my-8 px-2 max-w-4xl mx-auto">${columns}</div>`;
 }
 
 /**

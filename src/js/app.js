@@ -9,6 +9,7 @@ import { renderAlumnos, renderAudiciones } from './ui/render.js';
 import { setupEventListeners } from './ui/events.js';
 import { DOM } from './ui/dom.js';
 import { initConfigPanel } from './ui/config-panel.js';
+import { renderRoundTimeline } from './ui/round-timeline.js';
 
 /**
  * Inicializa la aplicación completa
@@ -70,6 +71,8 @@ export async function initApp() {
       canciones: canciones,
       alumnos: alumnos,
       rondaActual: rondaActual,
+      rondaVista: rondaActual,
+      rondaHistorial: null,
       rondaCerrada,
       audicionActual: 1,
       audicionesRonda: audiciones,
@@ -90,6 +93,7 @@ export async function initApp() {
       ).join('');
       selectRonda.value = String(rondaActual);
     }
+    renderRoundTimeline();
 
     // 6. Renderizar UI inicial
     renderAudiciones(appState.get());

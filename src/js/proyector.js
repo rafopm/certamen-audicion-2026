@@ -691,57 +691,38 @@ async function renderRankingProyector(estado) {
 
   if (!ranking || ranking.length === 0) return;
 
-  const top3 = ranking.slice(0, 3);
-  const [primero, segundo, tercero] = top3;
-
   if (elPodio) {
-    elPodio.innerHTML = `
-      <div class="flex justify-center items-end gap-6 max-w-4xl mx-auto mb-8">
-        <!-- 2do -->
-        <div class="flex-1 text-center">
-          ${segundo ? `
-            <div class="bg-slate-800/80 border-2 border-slate-300 rounded-2xl p-4 shadow-xl">
-              <span class="text-3xl">🥈</span>
-              <p class="font-extrabold text-xl text-white truncate mt-1">${formatNombre(segundo.nombre)}</p>
-              <p class="text-sm text-slate-300">${segundo.grado || ''}</p>
-              <p class="text-2xl font-black text-yellow-400 mt-2">${segundo.puntosTotal || 0} pts</p>
-              <div class="h-20 bg-slate-700 rounded-lg mt-3 flex items-center justify-center text-slate-300 font-bold text-xl">2° Lugar</div>
+    const podiumStyles = {
+      1: { medal: '👑', className: 'border-yellow-400 bg-yellow-950/50 text-yellow-200' },
+      2: { medal: '🥈', className: 'border-slate-300 bg-slate-800/80 text-slate-200' },
+      3: { medal: '🥉', className: 'border-amber-600 bg-amber-950/50 text-amber-200' }
+    };
+    elPodio.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-3 items-end gap-4 max-w-5xl mx-auto mb-8">${
+      [2, 1, 3].map(position => {
+        const members = ranking.filter((item, index) => getRankPosition(item, index) === position);
+        const style = podiumStyles[position];
+        if (members.length === 0) return '<div class="min-h-24"></div>';
+        return `
+          <div class="rounded-2xl border-2 ${style.className} p-4 text-center shadow-xl">
+            <div class="mb-3 text-3xl">${style.medal} <span class="text-xl font-black">${position}°</span></div>
+            <div class="space-y-3">
+              ${members.map(item => `
+                <div class="rounded-xl bg-slate-950/50 p-3">
+                  <p class="font-extrabold text-white">${formatNombre(item.nombre)}</p>
+                  <p class="text-sm text-slate-300">${item.grado || ''}</p>
+                  <p class="mt-1 text-xl font-black text-yellow-300">${item.puntosTotal || 0} pts</p>
+                </div>
+              `).join('')}
             </div>
-          ` : ''}
-        </div>
-
-        <!-- 1ro -->
-        <div class="flex-1 text-center transform -translate-y-4">
-          ${primero ? `
-            <div class="bg-gradient-to-b from-yellow-950/80 to-slate-900 border-4 border-yellow-400 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
-              <span class="text-5xl animate-bounce inline-block">👑</span>
-              <p class="font-black text-2xl text-yellow-300 truncate mt-1">${formatNombre(primero.nombre)}</p>
-              <p class="text-sm text-yellow-200/80">${primero.grado || ''}</p>
-              <p class="text-4xl font-black text-yellow-400 mt-2">${primero.puntosTotal || 0} pts</p>
-              <div class="h-28 bg-gradient-to-t from-yellow-600 to-yellow-400 text-slate-950 rounded-lg mt-3 flex items-center justify-center font-black text-2xl shadow-lg">🥇 1° Puesto</div>
-            </div>
-          ` : ''}
-        </div>
-
-        <!-- 3ro -->
-        <div class="flex-1 text-center">
-          ${tercero ? `
-            <div class="bg-slate-800/80 border-2 border-amber-600 rounded-2xl p-4 shadow-xl">
-              <span class="text-3xl">🥉</span>
-              <p class="font-extrabold text-xl text-white truncate mt-1">${formatNombre(tercero.nombre)}</p>
-              <p class="text-sm text-slate-300">${tercero.grado || ''}</p>
-              <p class="text-2xl font-black text-yellow-400 mt-2">${tercero.puntosTotal || 0} pts</p>
-              <div class="h-16 bg-amber-800 rounded-lg mt-3 flex items-center justify-center text-amber-200 font-bold text-xl">3° Lugar</div>
-            </div>
-          ` : ''}
-        </div>
-      </div>
-    `;
+          </div>
+        `;
+      }).join('')
+    }</div>`;
   }
 
   if (elRankingTable) {
     elRankingTable.innerHTML = ranking.map((item, idx) => {
-      const pos = idx + 1;
+      const pos = getRankPosition(item, idx);
       let badge = `${pos}°`;
       let rowBg = 'border-slate-800 bg-slate-900/40';
 
@@ -759,6 +740,7 @@ async function renderRankingProyector(estado) {
       const estadoText = item.eliminado 
         ? `Eliminado en Ronda ${item.rondaEliminacion || 1}` 
         : `Clasificado (Ronda ${item.rondaMax || 1})`;
+      const trayectoria = renderTrayectoriaProyector(item);
 
       return `
         <tr class="border-b ${rowBg} text-lg md:text-xl transition-colors">
@@ -770,11 +752,37 @@ async function renderRankingProyector(estado) {
               ${estadoText}
             </span>
           </td>
+          <td class="py-3 px-4">
+            <div class="flex flex-wrap gap-1">${trayectoria}</div>
+          </td>
           <td class="py-3 px-4 text-right font-black text-yellow-400 text-2xl">${item.puntosTotal || 0}</td>
         </tr>
       `;
     }).join('');
   }
+}
+
+function getRankPosition(item, index) {
+  const position = Number(item.posicion);
+  return Number.isInteger(position) && position > 0 ? position : index + 1;
+}
+
+function renderTrayectoriaProyector(item) {
+  const details = item.detalleRondas || {};
+  return Array.from({ length: CONFIG.TOTAL_RONDAS }, (_, index) => {
+    const round = index + 1;
+    const key = `ronda_${round}`;
+    if (!Object.prototype.hasOwnProperty.call(details, key)) {
+      if (round <= Number(item.rondaMax || 0)) {
+        return `<span class="rounded bg-cyan-950 px-2 py-1 text-xs text-cyan-200">R${round} en curso</span>`;
+      }
+      return `<span class="rounded bg-slate-800 px-2 py-1 text-xs text-slate-500">R${round} —</span>`;
+    }
+
+    const score = Number(details[key]);
+    const total = CONFIG.ROUNDS[round] ? CONFIG.ROUNDS[round].audiciones : '?';
+    return `<span class="rounded bg-emerald-950 px-2 py-1 text-xs text-emerald-200">R${round} ${Number.isFinite(score) ? score : '—'}/${total}</span>`;
+  }).join('');
 }
 
 function triggerConfetti() {

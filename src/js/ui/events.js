@@ -8,6 +8,7 @@ import { api } from '../services/api.js';
 import { CONFIG, getRoundOptionLabel } from '../config.js';
 import { getResponsesForAudition, isAuditionSaved } from '../core/rules.js';
 import { renderAlumnos, renderAudiciones, renderRanking } from './render.js';
+import { bindRoundTimeline, renderRoundTimeline } from './round-timeline.js';
 import { isValidRonda, extractFileId, isValidFileId, normalizeAnswer } from '../utils/validators.js';
 
 let isPlaying = false;
@@ -27,11 +28,18 @@ let projectorStopPending = false;
 export function setupEventListeners() {
   DOM.init();
   currentAudicionIndex = appState.get().audicionActual || 1;
+  bindRoundTimeline(DOM.get('selectRonda'));
+  renderRoundTimeline();
 
   // 1. CLICK EN PLAY / DETENER
   const btnPlay = DOM.get('btnPlay');
   if (btnPlay) {
     btnPlay.addEventListener('click', async () => {
+      const currentState = appState.get();
+      if (isHistoricalRoundView(currentState) || currentState.rondaCerrada) {
+        DOM.showToast('La reproducción solo está disponible en la ronda activa y abierta.', 'warning');
+        return;
+      }
       if (isPlaying) {
         cancelarReproduccionProyector();
         return;
@@ -212,14 +220,22 @@ export function setupEventListeners() {
       }
 
       const stateActual = appState.get();
+      const rondaActiva = Number(stateActual.rondaActual) || 1;
+      const rondaSeleccionada = Number(stateActual.rondaVista) || rondaActiva;
       if (isPlaying) {
-        e.target.value = String(stateActual.rondaActual || 1);
+        e.target.value = String(rondaSeleccionada);
         DOM.showToast('Espera a que termine el audio antes de cambiar de ronda.', 'warning');
         return;
       }
-      if (nuevaRonda > (stateActual.rondaActual || 1) && !isRoundComplete()) {
-        e.target.value = String(stateActual.rondaActual || 1);
-        DOM.showToast('Guarda todas las respuestas de la ronda actual antes de avanzar.', 'warning', 4000);
+      if (nuevaRonda < rondaActiva && !CONFIG.COMPLETED_ROUNDS[nuevaRonda]) {
+        e.target.value = String(rondaSeleccionada);
+        DOM.showToast('Solo se pueden consultar rondas que ya fueron completadas.', 'warning');
+        return;
+      }
+      if (nuevaRonda > rondaActiva &&
+          (nuevaRonda !== rondaActiva + 1 || !stateActual.rondaCerrada)) {
+        e.target.value = String(rondaSeleccionada);
+        DOM.showToast('Finaliza la ronda activa antes de iniciar la siguiente.', 'warning', 4000);
         return;
       }
 
@@ -227,37 +243,70 @@ export function setupEventListeners() {
       try {
         currentAudicionIndex = 1;
 
-        await api.actualizarRondaActual(nuevaRonda);
-        actualizarEstiloBotonesProyector('AUDICION', modoBotones);
+        if (nuevaRonda < rondaActiva) {
+          const [audRes, resRes, respuestasRes] = await Promise.all([
+            api.getAudicionesRonda(nuevaRonda),
+            api.getResultados(nuevaRonda),
+            api.getRespuestasRonda(nuevaRonda)
+          ]);
+          appState.set({
+            rondaVista: nuevaRonda,
+            rondaHistorial: {
+              ronda: nuevaRonda,
+              audicionesRonda: audRes.data || [],
+              resultados: resRes.data || [],
+              respuestasAudicion: respuestasRes.data || []
+            },
+            audicionActual: 1
+          });
+        } else if (nuevaRonda === rondaActiva) {
+          appState.set({
+            rondaVista: rondaActiva,
+            rondaHistorial: null,
+            audicionActual: 1
+          });
+        } else {
+          const [audRes, resRes, alRes, respuestasRes] = await Promise.all([
+            api.getAudicionesRonda(nuevaRonda),
+            api.getResultados(nuevaRonda),
+            api.getAlumnos(),
+            api.getRespuestasRonda(nuevaRonda)
+          ]);
 
-        const [audRes, resRes, alRes, respuestasRes, estadoRes] = await Promise.all([
-          api.getAudicionesRonda(nuevaRonda),
-          api.getResultados(nuevaRonda),
-          api.getAlumnos(),
-          api.getRespuestasRonda(nuevaRonda),
-          api.getEstadoCertamen()
-        ]);
+          await api.actualizarRondaActual(nuevaRonda);
+          appState.set({
+            rondaActual: nuevaRonda,
+            rondaVista: nuevaRonda,
+            rondaHistorial: null,
+            rondaCerrada: Boolean(CONFIG.COMPLETED_ROUNDS[nuevaRonda]),
+            audicionActual: 1,
+            audicionesRonda: audRes.data || [],
+            resultados: resRes.data || [],
+            alumnos: alRes.data || [],
+            respuestasAudicion: respuestasRes.data || []
+          });
+          actualizarEstiloBotonesProyector('AUDICION', modoBotones);
+        }
 
-        appState.set({
-          rondaActual: nuevaRonda,
-          rondaCerrada: Boolean(estadoRes.data && estadoRes.data.rondaCerrada),
-          audicionActual: 1,
-          audicionesRonda: audRes.data || [],
-          resultados: resRes.data || [],
-          alumnos: alRes.data || [],
-          respuestasAudicion: respuestasRes.data || []
-        });
-
-        renderAudiciones(appState.get());
-        renderAlumnos(appState.get());
+        renderRoundView();
+        renderRoundTimeline();
 
         const configRonda = CONFIG.ROUNDS[nuevaRonda] || { duracion: 40 };
         actualizarBadgeRangoUI(0, configRonda.duracion);
         updateAuditionControls();
-        DOM.showToast(`Secuencia: Ronda ${nuevaRonda} activada`, 'success');
+        DOM.showToast(
+          nuevaRonda < rondaActiva
+            ? `Consulta de Ronda ${nuevaRonda} · solo lectura`
+            : `Ronda ${nuevaRonda} activa`,
+          'success'
+        );
       } catch (err) {
         console.error('Error al cambiar ronda:', err);
-        e.target.value = String(stateActual.rondaActual || 1);
+        currentAudicionIndex = stateActual.audicionActual || 1;
+        e.target.value = String(rondaSeleccionada);
+        renderRoundTimeline();
+        renderRoundView();
+        updateAuditionControls();
         DOM.showToast('Error al cambiar de ronda: ' + err.message, 'error');
       } finally {
         DOM.hideLoading();
@@ -325,6 +374,10 @@ export function setupEventListeners() {
   if (btnGuardarAciertos) {
     btnGuardarAciertos.addEventListener('click', async () => {
       const state = appState.get();
+      if (isHistoricalRoundView(state)) {
+        DOM.showToast('Las rondas históricas son de solo lectura.', 'warning');
+        return;
+      }
       const ronda = state.rondaActual || 1;
       const audicionNum = currentAudicionIndex;
       if (isPlaying) {
@@ -398,6 +451,10 @@ export function setupEventListeners() {
   if (btnFinalizarRonda) {
     btnFinalizarRonda.addEventListener('click', async () => {
       const state = appState.get();
+      if (isHistoricalRoundView(state)) {
+        DOM.showToast('Selecciona la ronda activa para finalizarla.', 'warning');
+        return;
+      }
       const ronda = state.rondaActual || 1;
       const configRonda = CONFIG.ROUNDS[ronda] || { minimoPasar: 2 };
       if (!isRoundComplete()) {
@@ -448,6 +505,7 @@ export function setupEventListeners() {
 
         renderAlumnos(appState.get());
         updateAuditionControls();
+        renderRoundTimeline();
 
         actualizarEstiloBotonesProyector(ronda === CONFIG.TOTAL_RONDAS ? 'RANKING_FINAL' : 'CLASIFICADOS', modoBotones);
 
@@ -470,6 +528,10 @@ export function setupEventListeners() {
   if (btnResetRonda) {
     btnResetRonda.addEventListener('click', async () => {
       const state = appState.get();
+      if (isHistoricalRoundView(state)) {
+        DOM.showToast('Selecciona la ronda activa antes de resetearla.', 'warning');
+        return;
+      }
       const ronda = state.rondaActual || 1;
 
       const confirmar = window.confirm(
@@ -505,6 +567,7 @@ export function setupEventListeners() {
 
         renderAlumnos(appState.get());
         updateAuditionControls();
+        renderRoundTimeline();
         DOM.showToast(`Ronda ${ronda} ha sido reseteada correctamente`, 'warning');
       } catch (err) {
         console.error('Error al resetear ronda:', err);
@@ -565,6 +628,38 @@ function actualizarAudicionActualEnApp(num) {
   actualizarBadgeRangoUI(0, configRonda.duracion);
 }
 
+function isHistoricalRoundView(state = appState.get()) {
+  return Number(state.rondaVista || state.rondaActual) !== Number(state.rondaActual);
+}
+
+function getRoundViewState(state = appState.get()) {
+  if (!isHistoricalRoundView(state)) {
+    return { ...state, soloLectura: false };
+  }
+
+  const history = state.rondaHistorial;
+  if (!history || Number(history.ronda) !== Number(state.rondaVista)) {
+    return { ...state, soloLectura: true };
+  }
+
+  return {
+    ...state,
+    rondaActual: Number(history.ronda),
+    audicionesRonda: history.audicionesRonda,
+    resultados: history.resultados,
+    respuestasAudicion: history.respuestasAudicion,
+    rondaCerrada: true,
+    audicionActual: currentAudicionIndex,
+    soloLectura: true
+  };
+}
+
+function renderRoundView() {
+  const state = getRoundViewState();
+  renderAudiciones(state);
+  renderAlumnos(state);
+}
+
 function getParticipantesRonda(state = appState.get()) {
   const ronda = Number(state.rondaActual) || 1;
   return (state.alumnos || []).filter(alumno => {
@@ -618,19 +713,39 @@ function isRoundComplete(state = appState.get()) {
 
 function updateAuditionControls() {
   const state = appState.get();
-  const configRonda = CONFIG.ROUNDS[state.rondaActual];
+  const historical = isHistoricalRoundView(state);
+  const round = historical ? Number(state.rondaVista) : Number(state.rondaActual);
+  const configRonda = CONFIG.ROUNDS[round];
   if (!configRonda) return;
+
+  const play = DOM.get('btnPlay');
+  const previous = document.getElementById('btn-prev-audicion');
+  const next = document.getElementById('btn-next-audicion');
+  const save = DOM.get('btnGuardarAciertos');
+  const finalize = DOM.get('btnFinalizarRonda');
+  const reset = DOM.get('btnResetRonda');
+  const status = document.getElementById('audicion-estado-guardado');
+  if (historical) {
+    if (play) play.disabled = true;
+    if (previous) previous.disabled = true;
+    if (next) next.disabled = true;
+    if (save) save.disabled = true;
+    if (finalize) finalize.disabled = true;
+    if (reset) reset.disabled = true;
+    if (status) {
+      status.textContent = `Consulta de Ronda ${round} · solo lectura`;
+      status.className = 'text-xs mb-3 text-cyan-300';
+    }
+    return;
+  }
 
   const saved = isCurrentAuditionSaved(state);
   const dirty = isCurrentAuditionDirty(state);
   const complete = isRoundComplete(state);
   const closed = Boolean(state.rondaCerrada);
-  const previous = document.getElementById('btn-prev-audicion');
-  const next = document.getElementById('btn-next-audicion');
-  const save = DOM.get('btnGuardarAciertos');
-  const finalize = DOM.get('btnFinalizarRonda');
-  const status = document.getElementById('audicion-estado-guardado');
 
+  if (play && !isPlaying) play.disabled = closed;
+  if (reset) reset.disabled = false;
   if (previous) previous.disabled = closed || isPlaying || currentAudicionIndex <= 1;
   if (next) {
     const canAdvance = !closed && saved && !dirty && !isPlaying && currentAudicionIndex < configRonda.audiciones;

@@ -11,6 +11,7 @@ import { api } from '../services/api.js';
 import { appState } from '../core/state.js';
 import { CONFIG, getRoundConfigSuffix, getRoundOptionLabel } from '../config.js';
 import { renderAlumnos, renderAudiciones } from './render.js';
+import { renderRoundTimeline } from './round-timeline.js';
 import { extractFileId, sanitizeInput } from '../utils/validators.js';
 
 let modalElement = null;
@@ -877,6 +878,8 @@ function renderTabRondas(container) {
       if (roundRulesChanged || reiniciarResultados) {
         appState.set({
           rondaActual: nextRound,
+          rondaVista: nextRound,
+          rondaHistorial: null,
           rondaCerrada: false,
           audicionActual: 1,
           audicionesRonda: roundRulesChanged ? [] : state.audicionesRonda,
@@ -889,6 +892,7 @@ function renderTabRondas(container) {
       actualizarSelectorRondas();
       const selectRonda = document.getElementById('select-ronda');
       if (selectRonda) selectRonda.value = String(nextRound);
+      renderRoundTimeline();
       renderAudiciones(appState.get());
       renderAlumnos(appState.get());
       DOM.showToast('✅ Paso 1 guardado. Continúa con canciones y luego realiza el sorteo.', 'success', 4500);

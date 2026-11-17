@@ -143,6 +143,8 @@ Cabeceras en Fila 1:
 4. Durante una ronda, reproduce una audición, revisa las pizarras y guarda una respuesta por cada participante elegible. Los campos vacíos o incorrectos se guardan como error.
 5. El botón **Siguiente** solo se habilita cuando las respuestas están guardadas y sin cambios pendientes. La ronda no puede finalizar hasta completar todas sus audiciones.
 6. Al finalizar la ronda se calcula quién clasifica según su mínimo de aciertos, se actualizan los puntos y la ronda queda marcada como **Completada**. El panel permanece en esa ronda; selecciona manualmente la siguiente cuando quieras continuar. Para modificar una ronda cerrada, usa **Resetear ronda**, que también borra los datos de las rondas posteriores.
+7. La línea de tiempo habilita la siguiente ronda solo después de cerrar la actual. Al avanzar, se cargan primero sus datos y se muestran únicamente quienes clasificaron. Las rondas anteriores se pueden consultar en modo de solo lectura; vuelve a la ronda activa para continuar reproduciendo y registrando respuestas.
+8. El ranking muestra los resultados y el avance por cada ronda. Si dos participantes terminan con el mismo puntaje y llegaron a la misma ronda máxima, comparten puesto y premio de podio.
 
 Al cambiar reglas o puntajes con actividad registrada, el panel solicitará confirmar el reinicio de respuestas y resultados. Cambiar parámetros de ronda también limpia el sorteo; cambiar solo los puntajes conserva el sorteo.
 

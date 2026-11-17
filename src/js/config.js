@@ -5,7 +5,7 @@
  */
 export const CONFIG = {
   // Dirección del servicio de datos
-  API_URL: 'https://script.google.com/macros/s/AKfycbzQbiFEfylHoZu2G2bemw4frPyvmNrZDUmq7kUCmsE5DMGwYvyoGMngWUOp60_1qx9V/exec',
+  API_URL: 'https://script.google.com/macros/s/AKfycbyUCK9nU-6pu94powdNfyWYWGC8j3mLIMiGEvoX4DbU50um-HxComXapHLeyjUbar6F/exec',
   
   // Total de rondas configuradas (default 5, editable desde panel)
   TOTAL_RONDAS: 5,

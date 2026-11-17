@@ -6,7 +6,9 @@ class AppState {
   constructor() {
     this.state = {
       rondaActual: 1,
+      rondaVista: 1,
       rondaCerrada: false,
+      rondaHistorial: null,
       audicionActual: 0,
       alumnos: [],
       canciones: [],
