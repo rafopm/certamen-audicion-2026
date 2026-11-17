@@ -14,65 +14,53 @@
   <!-- Estilos personalizados -->
   <link rel="stylesheet" href="/src/css/main.css">
 </head>
-<body class="bg-slate-950 text-white min-h-screen flex flex-col justify-between selection:bg-yellow-500 selection:text-black overflow-x-hidden">
+<body class="bg-slate-950 text-white min-h-screen flex flex-col selection:bg-yellow-500 selection:text-black overflow-x-hidden">
 
   <!-- Header del Proyector -->
-  <header class="bg-gradient-to-r from-blue-950 via-slate-900 to-blue-950 border-b border-yellow-500/30 px-8 py-5 shadow-2xl">
-    <div class="flex justify-between items-center max-w-7xl mx-auto">
-      <div class="flex items-center space-x-4">
-        <span class="text-4xl">🎼</span>
+  <header class="bg-gradient-to-r from-blue-950 via-slate-900 to-blue-950 border-b border-yellow-500/30 px-4 py-2.5 shadow-lg">
+    <div class="flex items-center max-w-7xl mx-auto">
+      <div class="flex items-center gap-3 min-w-0">
+        <img src="/logo.png" alt="Logo institucional" class="h-11 w-11 md:h-12 md:w-12 shrink-0 object-contain">
         <div>
-          <h1 class="text-3xl md:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-amber-200 to-yellow-500 font-display tracking-tight">
+          <h1 class="text-lg md:text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-amber-200 to-yellow-500 font-display tracking-tight leading-tight">
             Certamen de Audición Musical 2026
           </h1>
-          <p class="text-sm md:text-base text-blue-200 font-medium">
+          <p class="text-[10px] md:text-xs text-blue-200 font-medium">
             I.E.P. San Martín de Porres • Homenaje a <strong class="text-yellow-400">Johann Strauss</strong> (201 años)
           </p>
         </div>
-      </div>
-
-      <div class="flex items-center space-x-6">
-        <button id="btn-audio-activate" class="bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg border border-emerald-500/60 text-xs font-semibold uppercase tracking-wider transition cursor-pointer">
-          🔊 Activar audio
-        </button>
-        <div id="proj-live-status" class="flex items-center text-emerald-400 font-bold text-sm tracking-wider uppercase bg-emerald-950/80 border border-emerald-500/40 px-4 py-2 rounded-full shadow-inner">
-          <span class="inline-block w-3 h-3 bg-emerald-500 rounded-full animate-ping mr-2"></span> EN VIVO
-        </div>
-        <button id="btn-fullscreen" class="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-3 py-1.5 rounded-lg border border-slate-700 text-xs font-semibold uppercase tracking-wider transition cursor-pointer">
-          ⛶ Pantalla Completa
-        </button>
       </div>
     </div>
   </header>
 
   <!-- Contenido Principal Dinámico -->
-  <main class="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8 flex flex-col justify-center">
+  <main class="projector-main flex-1 max-w-7xl w-full mx-auto px-3 py-2 md:px-6 md:py-3 pb-24 flex flex-col justify-center">
 
     <!-- Encabezado de Ronda Activa (Visible en todos los modos) -->
-    <section class="text-center my-4">
-      <div class="inline-block bg-blue-900/40 border border-yellow-500/40 px-8 py-3 rounded-full mb-3 shadow-lg backdrop-blur">
-        <h2 id="proj-ronda-nombre" class="text-2xl md:text-3xl font-black text-yellow-400 uppercase tracking-widest font-display">
+    <section class="text-center my-1">
+      <div class="inline-block bg-blue-900/40 border border-yellow-500/40 px-5 py-1.5 rounded-full shadow backdrop-blur">
+        <h2 id="proj-ronda-nombre" class="text-lg md:text-2xl font-black text-yellow-400 uppercase tracking-widest font-display">
           Ronda 1
         </h2>
-        <p id="proj-ronda-detalle" class="text-sm md:text-base text-slate-300 mt-1">
+        <p id="proj-ronda-detalle" class="text-[10px] md:text-xs text-slate-300">
           40s por audición • Mínimo 2 aciertos para clasificar
         </p>
       </div>
     </section>
 
     <!-- MODO 1: SOLO AUDICIÓN (TEMPORIZADOR ENORME Y FOCO MÁXIMO) -->
-    <div id="view-modo-audicion" class="text-center my-8">
-      <div class="my-6">
-        <div id="proj-timer" class="text-9xl md:text-[13rem] font-black text-yellow-400 font-display drop-shadow-[0_15px_35px_rgba(250,204,21,0.5)] leading-none select-none">
+    <div id="view-modo-audicion" class="text-center my-1">
+      <div class="my-1">
+        <div id="proj-timer" class="text-8xl md:text-[11rem] font-black text-yellow-400 font-display drop-shadow-[0_10px_25px_rgba(250,204,21,0.4)] leading-none select-none">
           40
         </div>
-        <span class="text-lg md:text-xl tracking-widest text-slate-400 uppercase font-semibold block mt-4">
+        <span class="text-xs md:text-sm tracking-widest text-slate-400 uppercase font-semibold block mt-1">
           segundos de audición
         </span>
       </div>
 
       <!-- Ondas Musicales para Proyección -->
-      <div class="sound-waves my-8 max-w-md mx-auto">
+      <div class="sound-waves my-2 max-w-md mx-auto">
         <div class="bar"></div>
         <div class="bar"></div>
         <div class="bar"></div>
@@ -81,39 +69,39 @@
         <div class="bar"></div>
       </div>
 
-      <div class="inline-block bg-slate-900/80 border border-slate-800 px-6 py-2 rounded-xl text-slate-400 text-sm">
+      <div class="inline-block bg-slate-900/80 border border-slate-800 px-4 py-1.5 rounded-lg text-slate-400 text-xs">
         🤫 Silencio en el auditorio • Escriban sus respuestas en las pizarras
       </div>
-      <p id="proj-audio-status" class="text-sm md:text-base text-amber-300 mt-4" aria-live="polite">
+      <p id="proj-audio-status" class="text-xs md:text-sm text-amber-300 mt-2" aria-live="polite">
         Activa el audio en esta computadora antes de iniciar la primera audición.
       </p>
     </div>
 
     <!-- MODO 2: CLASIFICADOS DE LA RONDA (ENTRE RONDAS) -->
-    <div id="view-modo-clasificados" class="hidden my-4">
-      <div class="bg-gradient-to-r from-blue-950 via-slate-900 to-blue-950 border border-emerald-500/50 rounded-2xl p-6 md:p-8 shadow-2xl text-center mb-6">
-        <span class="text-4xl inline-block mb-2">🎉</span>
-        <h3 class="text-2xl md:text-3xl font-black text-emerald-400 uppercase font-display tracking-wide">
+    <div id="view-modo-clasificados" class="hidden my-2">
+      <div class="bg-gradient-to-r from-blue-950 via-slate-900 to-blue-950 border border-emerald-500/50 rounded-xl p-4 md:p-5 shadow-xl text-center mb-3">
+        <span class="text-2xl inline-block">🎉</span>
+        <h3 class="text-lg md:text-2xl font-black text-emerald-400 uppercase font-display tracking-wide">
           Participantes Clasificados a la Siguiente Fase
         </h3>
-        <p class="text-sm text-slate-300 mt-1" id="proj-clasificados-subtitulo">
+        <p class="text-xs text-slate-300 mt-1" id="proj-clasificados-subtitulo">
           Alumnos que alcanzaron el mínimo de aciertos requerido
         </p>
       </div>
 
-      <div id="proj-clasificados-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+      <div id="proj-clasificados-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
         <!-- Tarjetas dinámicas de clasificados -->
       </div>
     </div>
 
     <!-- MODO 3: RANKING FINAL Y PODIO (SOLO AL FINALIZAR EL CERTAMEN) -->
-    <div id="view-modo-ranking" class="hidden my-4">
+    <div id="view-modo-ranking" class="hidden my-2">
       <!-- Podio TOP 3 -->
       <div id="proj-podio"></div>
 
       <!-- Tabla Completa de Posiciones -->
-      <section class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-2xl backdrop-blur-md">
-        <h3 class="text-xl font-bold text-yellow-400 mb-4 flex items-center">
+      <section class="bg-slate-900/90 border border-slate-800 rounded-xl p-4 shadow-xl backdrop-blur-md">
+        <h3 class="text-base font-bold text-yellow-400 mb-2 flex items-center">
           <span class="mr-2">🏆</span> Tabla Final de Posiciones
         </h3>
         <div class="overflow-x-auto">
@@ -140,9 +128,24 @@
 
   <audio id="proj-audio" preload="none"></audio>
 
-  <!-- Footer Proyector -->
-  <footer class="bg-slate-950 border-t border-slate-900 py-3 text-center text-xs text-slate-500">
-    Certamen de Audición Musical 2026 • Sistema de Proyección en Vivo • Sincronización Automática
+  <!-- Controles siempre accesibles, sin cubrir el contenido -->
+  <footer class="projector-dock fixed inset-x-0 bottom-0 z-50 border-t border-yellow-500/20 px-3 py-2" aria-label="Controles del proyector">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-2 min-w-0">
+        <div id="proj-live-status" class="flex items-center text-emerald-300 font-bold text-[10px] tracking-wider uppercase bg-emerald-950/70 border border-emerald-500/30 px-2.5 py-1.5 rounded-full">
+          <span class="inline-block w-2 h-2 bg-emerald-500 rounded-full animate-ping mr-2"></span> EN VIVO
+        </div>
+        <span class="hidden sm:inline text-[10px] text-slate-500">Certamen de Audición Musical 2026</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="btn-audio-activate" class="bg-emerald-800 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg border border-emerald-500/50 text-[10px] font-semibold uppercase tracking-wider transition cursor-pointer">
+          🔊 Activar audio
+        </button>
+        <button id="btn-fullscreen" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg border border-slate-700 text-[10px] font-semibold uppercase tracking-wider transition cursor-pointer">
+          ⛶ Pantalla completa
+        </button>
+      </div>
+    </div>
   </footer>
 
   <!-- Script Proyector -->

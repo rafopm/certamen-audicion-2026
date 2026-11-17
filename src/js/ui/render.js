@@ -117,52 +117,52 @@ export function renderAlumnos(arg1, arg2) {
       const isDisabled = soloLectura || rondaCerrada || eliminadoAnteriormente || !isAudicionActual;
 
       checkboxesHtml += `
-        <label class="flex flex-col items-center justify-center cursor-pointer p-1.5 rounded-lg border transition select-none ${isAudicionActual ? 'bg-yellow-500/20 border-yellow-400 shadow-md ring-1 ring-yellow-400' : 'bg-blue-950/60 hover:bg-blue-900 border-blue-700/50'}">
-          <span class="text-xs ${isAudicionActual ? 'text-yellow-300 font-extrabold' : 'text-slate-300'} mb-1">Aud ${audNum}</span>
+        <label class="flex flex-col items-center justify-center cursor-pointer p-1 rounded-md border transition select-none ${isAudicionActual ? 'bg-yellow-500/20 border-yellow-400 shadow ring-1 ring-yellow-400' : 'bg-blue-950/60 hover:bg-blue-900 border-blue-700/50'}">
+          <span class="text-[10px] ${isAudicionActual ? 'text-yellow-300 font-extrabold' : 'text-slate-300'} mb-0.5">Aud ${audNum}</span>
           <input 
             type="checkbox" 
-            class="checkbox-acierto w-5 h-5 text-yellow-500 bg-blue-900 rounded border-gray-400 focus:ring-yellow-400 focus:ring-2 cursor-pointer"
+            class="checkbox-acierto w-4 h-4 text-yellow-500 bg-blue-900 rounded border-gray-400 focus:ring-yellow-400 focus:ring-2 cursor-pointer"
             data-alumno-id="${sanitizeInput(alumno.id)}"
             data-audicion="${audNum}"
             ${isChecked ? 'checked' : ''}
             ${isDisabled ? 'disabled' : ''}
           />
-          <span class="text-[9px] ${audicionRespuesta ? (isChecked ? 'text-emerald-300' : 'text-rose-300') : 'text-slate-500'}">${audicionRespuesta ? (isChecked ? 'Correcta' : 'Error') : 'Pendiente'}</span>
+          <span class="text-[8px] ${audicionRespuesta ? (isChecked ? 'text-emerald-300' : 'text-rose-300') : 'text-slate-500'}">${audicionRespuesta ? (isChecked ? 'Correcta' : 'Error') : 'Pendiente'}</span>
         </label>
       `;
     }
 
     return `
-      <div class="alumno-card bg-slate-800/90 border border-slate-700 rounded-xl p-4 shadow-md transition hover:border-yellow-500/50 ${eliminadoAnteriormente ? 'opacity-40 bg-slate-950 cursor-not-allowed' : ''}" data-alumno-card="${sanitizeInput(alumno.id)}">
-        <div class="flex items-start justify-between mb-2">
-          <div>
-            <h3 class="font-bold text-base md:text-lg text-white">${sanitizeInput(nombreFormat)}</h3>
-            <p class="text-xs text-slate-300">${sanitizeInput(alumno.grado || '')} ${sanitizeInput(alumno.nivel || '')}</p>
+      <div class="alumno-card bg-slate-800/90 border border-slate-700 rounded-lg p-2.5 shadow transition hover:border-yellow-500/50 ${eliminadoAnteriormente ? 'opacity-40 bg-slate-950 cursor-not-allowed' : ''}" data-alumno-card="${sanitizeInput(alumno.id)}">
+        <div class="flex items-start justify-between gap-2 mb-1.5">
+          <div class="min-w-0">
+            <h3 class="font-bold text-sm text-white truncate">${sanitizeInput(nombreFormat)}</h3>
+            <p class="text-[10px] text-slate-300">${sanitizeInput(alumno.grado || '')} ${sanitizeInput(alumno.nivel || '')}</p>
           </div>
-          <span class="text-xs px-2.5 py-1 rounded-full font-medium ${badgeClass}">
+          <span class="text-[9px] px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${badgeClass}">
             ${estadoTexto}
           </span>
         </div>
 
         <!-- Checkboxes de audiciones -->
-        <div class="mt-2">
-          <div class="text-xs text-slate-400 mb-1.5 flex justify-between items-center">
+        <div class="mt-1.5">
+          <div class="text-[10px] text-slate-400 mb-1 flex justify-between items-center">
             <span>Aciertos Ronda ${rondaActual}:</span>
             <span class="font-bold text-yellow-400"><span id="aciertos-count-${alumno.id}">${aciertosPrevios}</span> / ${totalAudiciones}</span>
           </div>
-          <div class="grid grid-cols-${Math.min(totalAudiciones, 4)} gap-1.5">
+          <div class="grid grid-cols-${Math.min(totalAudiciones, 4)} gap-1">
             ${checkboxesHtml}
           </div>
         </div>
 
         <!-- Entrada rápida de respuesta de pizarra para el jurado -->
         ${!eliminadoAnteriormente ? `
-          <div class="mt-3 pt-2 border-t border-slate-700/60 flex items-center gap-2">
-            <span class="text-xs text-slate-400 whitespace-nowrap">✏️ Pizarra:</span>
+          <div class="mt-2 pt-1.5 border-t border-slate-700/60 flex items-center gap-2">
+            <span class="text-[10px] text-slate-400 whitespace-nowrap">✏️ Pizarra</span>
             <input 
               type="text" 
               placeholder="Código escrito (ej: TP2380)"
-              class="input-pizarra-alumno bg-slate-950 text-yellow-300 border border-slate-700 uppercase font-mono text-xs px-2.5 py-1 rounded-lg w-full focus:ring-1 focus:ring-yellow-400 focus:outline-none"
+              class="input-pizarra-alumno bg-slate-950 text-yellow-300 border border-slate-700 uppercase font-mono text-[11px] px-2 py-1 rounded-md w-full focus:ring-1 focus:ring-yellow-400 focus:outline-none"
               data-alumno-id="${sanitizeInput(alumno.id)}"
               data-audicion="${audicionActualNum}"
               ${soloLectura || rondaCerrada ? 'disabled' : ''}
@@ -228,7 +228,7 @@ export function renderAudiciones(arg1, arg2) {
   const infoContainer = document.getElementById('ronda-info-detalles');
   if (infoContainer) {
     infoContainer.innerHTML = `
-      <div class="flex flex-wrap items-center justify-between text-xs md:text-sm bg-blue-950/70 p-3 rounded-lg border border-blue-700/60 mt-3 gap-2">
+      <div class="flex flex-wrap items-center justify-between text-[10px] md:text-xs bg-blue-950/70 p-2 rounded-lg border border-blue-700/60 mt-2 gap-2">
         <span>⏱ <strong>Duración:</strong> ${configRonda.duracion || 40}s por audición</span>
         <span>🎯 <strong>Mínimo para clasificar:</strong> ${configRonda.minimoPasar || 2} aciertos</span>
         <span>🎼 <strong>Total audiciones:</strong> ${configRonda.audiciones || 4}</span>

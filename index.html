@@ -15,27 +15,27 @@
 <body class="bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 min-h-screen text-white flex flex-col justify-between selection:bg-yellow-400 selection:text-slate-950">
   
   <!-- Header -->
-  <header class="bg-blue-950/90 backdrop-blur border-b border-blue-800 p-4 shadow-xl sticky top-0 z-40">
+  <header class="bg-blue-950/90 backdrop-blur border-b border-blue-800 px-3 py-2 shadow-lg sticky top-0 z-40">
     <div class="container mx-auto flex flex-wrap justify-between items-center gap-4">
-      <div class="flex items-center space-x-3">
-        <span class="text-3xl">🎼</span>
+      <div class="flex items-center gap-3 min-w-0">
+        <img src="/logo.png" alt="Logo institucional" class="h-10 w-10 shrink-0 object-contain">
         <div>
-          <h1 class="text-xl md:text-2xl font-bold text-yellow-400 font-display">
+          <h1 class="text-base md:text-xl font-bold text-yellow-400 font-display leading-tight">
             Certamen Audición Musical 2026 - Panel de Jurado
           </h1>
-          <p class="text-xs md:text-sm text-blue-200">
+          <p class="text-[11px] md:text-xs text-blue-200">
             I.E.P. San Martín de Porres • Homenaje a Johann Strauss (201 años)
           </p>
         </div>
       </div>
       
       <!-- Controles rápidos del Proyector y Configuración en Cabecera -->
-      <div class="flex items-center space-x-2">
-        <button id="btn-abrir-config" class="bg-slate-800 hover:bg-slate-700 text-yellow-300 font-bold px-4 py-2 rounded-lg text-sm shadow-lg border border-slate-700 flex items-center space-x-2 transition cursor-pointer">
+      <div class="flex items-center gap-2">
+        <button id="btn-abrir-config" class="bg-slate-800 hover:bg-slate-700 text-yellow-300 font-bold px-3 py-1.5 rounded-lg text-xs shadow border border-slate-700 flex items-center gap-2 transition cursor-pointer">
           <span>⚙️</span>
           <span>Configuración</span>
         </button>
-        <a href="./proyector.html" target="_blank" rel="noopener noreferrer" class="bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-black px-4 py-2 rounded-lg text-sm shadow-lg flex items-center space-x-2 transition cursor-pointer">
+        <a href="./proyector.html" target="_blank" rel="noopener noreferrer" class="bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-black px-3 py-1.5 rounded-lg text-xs shadow flex items-center gap-2 transition cursor-pointer">
           <span>📺</span>
           <span>Abrir Proyector</span>
         </a>
@@ -44,10 +44,10 @@
   </header>
 
   <!-- Main Content -->
-  <main class="container mx-auto p-4 md:p-6 flex-1 max-w-5xl">
+  <main class="container mx-auto p-2 md:p-3 flex-1 max-w-screen-2xl">
     
     <!-- Barra de Control del Proyector (Nuevo) -->
-    <section class="mb-6 bg-slate-900/90 border border-yellow-500/30 p-4 rounded-2xl shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
+    <section class="mb-3 bg-slate-900/90 border border-yellow-500/30 p-3 rounded-xl shadow-lg flex flex-col md:flex-row items-center justify-between gap-3">
       <div class="flex items-center space-x-2">
         <span class="text-2xl">📺</span>
         <div>
@@ -56,149 +56,133 @@
         </div>
       </div>
 
-      <div class="flex flex-wrap gap-2" id="modo-proyector-controles">
-        <button id="btn-modo-audicion" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition border border-yellow-500 bg-yellow-500 text-slate-950 cursor-pointer shadow">
+      <div class="flex flex-wrap gap-1.5" id="modo-proyector-controles">
+        <button id="btn-modo-audicion" class="px-3 py-1.5 rounded-lg text-[11px] font-bold transition border border-yellow-500 bg-yellow-500 text-slate-950 cursor-pointer shadow">
           🎵 Solo Audición (Ocultar)
         </button>
-        <button id="btn-modo-clasificados" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition border border-slate-700 bg-slate-800 text-slate-300 hover:text-white cursor-pointer">
+        <button id="btn-modo-clasificados" class="px-3 py-1.5 rounded-lg text-[11px] font-bold transition border border-slate-700 bg-slate-800 text-slate-300 hover:text-white cursor-pointer">
           📋 Ver Clasificados Ronda
         </button>
-        <button id="btn-modo-ranking" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition border border-slate-700 bg-slate-800 text-slate-300 hover:text-white cursor-pointer">
+        <button id="btn-modo-ranking" class="px-3 py-1.5 rounded-lg text-[11px] font-bold transition border border-slate-700 bg-slate-800 text-slate-300 hover:text-white cursor-pointer">
           🏆 Ver Ranking Final y Podio
         </button>
       </div>
     </section>
 
     <!-- Selector de Ronda y Secuencia -->
-    <section id="round-selector" class="mb-6 bg-slate-900/90 border border-blue-900 p-5 rounded-2xl shadow-xl">
-      <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <label for="select-ronda" class="block text-lg font-bold text-yellow-300">
-          Línea de tiempo del certamen:
-        </label>
-        <span class="text-xs text-slate-400">
-          Las rondas completadas se pueden consultar en modo de solo lectura
-        </span>
+    <section id="round-selector" class="mb-3 bg-slate-900/90 border border-blue-900 p-3 rounded-xl shadow-lg">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <h2 class="text-sm md:text-base font-bold text-yellow-300">Rondas del certamen</h2>
+        <div class="flex items-center gap-2">
+          <label for="select-ronda" class="text-[11px] text-slate-400">Seleccionada</label>
+          <select id="select-ronda" class="bg-slate-800 text-yellow-300 border border-slate-700 font-semibold px-3 py-1.5 rounded-lg text-xs focus:ring-2 focus:ring-yellow-400 focus:outline-none cursor-pointer">
+            <option value="1">Cargando rondas...</option>
+          </select>
+        </div>
       </div>
-      <div id="round-timeline" class="mt-4 flex gap-2 overflow-x-auto pb-2" aria-label="Línea de tiempo de rondas"></div>
-      <label for="select-ronda" class="block mt-3 text-sm font-semibold text-slate-300">
-        Ronda seleccionada
-      </label>
-      <select id="select-ronda" class="mt-3 bg-slate-800 text-yellow-300 border border-slate-700 font-semibold p-3 rounded-xl w-full text-base focus:ring-2 focus:ring-yellow-400 focus:outline-none cursor-pointer">
-        <option value="1">Cargando rondas...</option>
-      </select>
+      <div id="round-timeline" class="mt-2 flex gap-2 overflow-x-auto pb-1" aria-label="Línea de tiempo de rondas"></div>
       <div id="ronda-info-detalles"></div>
     </section>
 
     <!-- Control de audición y validación de código para el jurado -->
-    <section id="audio-section" class="mb-6 bg-gradient-to-b from-slate-900 to-blue-950 border border-blue-800/80 p-6 md:p-8 rounded-2xl shadow-2xl text-center relative overflow-hidden">
-      
-      <!-- Navegación de Audición dentro de la Ronda -->
-      <div class="flex items-center justify-between max-w-md mx-auto mb-4">
-        <button id="btn-prev-audicion" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-700 transition cursor-pointer">
-          ◀ Anterior
-        </button>
-        <div class="bg-blue-950/90 border border-yellow-500/40 px-5 py-1.5 rounded-full shadow-inner">
-          <span class="text-xs text-yellow-400 uppercase font-semibold">Audición en Curso:</span>
-          <span id="audicion-numero" class="text-2xl font-black text-white ml-1">1</span>
+    <section id="audio-section" class="mb-3 bg-gradient-to-br from-slate-900 to-blue-950 border border-blue-800/80 p-3 md:p-4 rounded-xl shadow-xl grid grid-cols-1 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)] items-center gap-3 relative overflow-hidden">
+      <div id="admin-validacion-pizarra" class="p-3 bg-slate-950/90 border border-yellow-500/50 rounded-xl shadow-lg">
+        <div class="text-[10px] text-yellow-300 font-bold uppercase tracking-wider mb-1">
+          🔑 Respuesta esperada en pizarras
         </div>
-        <button id="btn-next-audicion" disabled class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-700 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
-          Siguiente ▶
-        </button>
-      </div>
-      <p id="audicion-estado-guardado" class="text-xs text-amber-300 mb-3">Respuestas pendientes de guardar</p>
-
-      <!-- Tarjeta Exclusiva del Jurado: Validación de Pizarras -->
-      <div id="admin-validacion-pizarra" class="my-3 p-4 bg-slate-950/90 border-2 border-yellow-500/50 rounded-xl max-w-xl mx-auto shadow-xl">
-        <div class="text-xs text-yellow-300 font-bold uppercase tracking-wider mb-1">
-          🔑 Validación para Jurado (Respuesta Esperada en Pizarras):
-        </div>
-        <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <div class="text-center sm:text-left">
-            <span class="text-xs text-slate-400 block">Obra de Strauss:</span>
-            <span id="admin-cancion-nombre" class="font-bold text-lg text-white font-display">Cargando composición...</span>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="min-w-0">
+            <span class="text-[10px] text-slate-400 block">Obra</span>
+            <span id="admin-cancion-nombre" class="font-bold text-base md:text-lg text-white font-display leading-tight">Cargando composición...</span>
           </div>
-          <div class="bg-yellow-500 text-slate-950 font-black text-2xl px-4 py-1.5 rounded-lg shadow-md tracking-wider">
+          <div class="bg-yellow-500 text-slate-950 font-black text-xl md:text-2xl px-4 py-1 rounded-lg shadow tracking-wider">
             <span id="admin-cancion-codigo">----</span>
           </div>
         </div>
-        <div id="admin-log-status" class="text-xs text-slate-400 mt-2">
+        <div id="admin-log-status" class="text-[10px] text-slate-400 mt-1.5">
           ⏱ Registro automático en la base de datos: <span id="admin-log-range">pendiente de reproducción</span> con fecha y hora
           <div id="admin-log-message" aria-live="polite"></div>
         </div>
-        <div id="admin-audio-cache-status" class="text-xs text-slate-400 mt-1" aria-live="polite">
+        <div id="admin-audio-cache-status" class="text-[10px] text-slate-400 mt-1" aria-live="polite">
           El audio se cargará en la computadora del proyector al iniciar la audición.
         </div>
       </div>
       
-      <!-- Controles de Inicio de Reproducción (Aleatorio o desde 0) -->
-      <div class="flex flex-wrap items-center justify-center gap-3 my-3">
-        <label class="inline-flex items-center gap-2 cursor-pointer bg-slate-950/80 px-4 py-2 rounded-xl border border-slate-700 hover:border-yellow-400/50 transition select-none">
-          <input type="checkbox" id="chk-random-start" checked class="w-4 h-4 text-yellow-500 rounded bg-slate-900 border-slate-600 focus:ring-yellow-400 cursor-pointer">
-          <span class="text-xs md:text-sm font-semibold text-yellow-300">🎲 Iniciar en segundo aleatorio</span>
-        </label>
-        <span id="badge-rango-reproduccion" class="text-xs font-mono bg-blue-950/80 px-3 py-2 rounded-xl border border-blue-800 text-blue-200">
-          📍 Rango: de 0s a 40s
-        </span>
-      </div>
-
-      <div class="inline-block bg-blue-950/80 border border-blue-800 px-5 py-3 rounded-xl text-sm text-blue-200 my-3">
-        El proyector controla la reproducción y el tiempo de audición.
-      </div>
-
-      <!-- Ondas de sonido decorativas -->
-      <div class="sound-waves">
+      <div class="flex flex-col items-center gap-1">
+        <div class="flex items-center justify-between w-full max-w-md mb-0.5">
+          <button id="btn-prev-audicion" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold px-3 py-1.5 rounded-lg border border-slate-700 transition cursor-pointer">
+            ◀ Anterior
+          </button>
+          <div class="bg-blue-950/90 border border-yellow-500/40 px-4 py-1 rounded-full shadow-inner">
+            <span class="text-[10px] text-yellow-400 uppercase font-semibold">Audición</span>
+            <span id="audicion-numero" class="text-xl font-black text-white ml-1">1</span>
+          </div>
+          <button id="btn-next-audicion" disabled class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold px-3 py-1.5 rounded-lg border border-slate-700 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+            Siguiente ▶
+          </button>
+        </div>
+        <p id="audicion-estado-guardado" class="text-[10px] text-amber-300">Respuestas pendientes de guardar</p>
+        <div class="flex flex-wrap items-center justify-center gap-2">
+          <label class="inline-flex items-center gap-2 cursor-pointer bg-slate-950/80 px-3 py-1.5 rounded-lg border border-slate-700 hover:border-yellow-400/50 transition select-none">
+            <input type="checkbox" id="chk-random-start" checked class="w-4 h-4 text-yellow-500 rounded bg-slate-900 border-slate-600 focus:ring-yellow-400 cursor-pointer">
+            <span class="text-[11px] font-semibold text-yellow-300">🎲 Inicio aleatorio</span>
+          </label>
+          <span id="badge-rango-reproduccion" class="text-[11px] font-mono bg-blue-950/80 px-3 py-1.5 rounded-lg border border-blue-800 text-blue-200">
+            📍 Rango: de 0s a 40s
+          </span>
+        </div>
+        <div class="sound-waves sound-waves-compact" aria-hidden="true">
         <div class="bar"></div>
         <div class="bar"></div>
         <div class="bar"></div>
         <div class="bar"></div>
         <div class="bar"></div>
         <div class="bar"></div>
-      </div>
-      
-      <div class="mt-4">
-        <button id="btn-play" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xl md:text-2xl font-black px-10 py-4 rounded-xl shadow-xl transition transform active:scale-95 inline-flex items-center space-x-3 cursor-pointer">
+        </div>
+        <p class="text-[10px] text-blue-200/70">El proyector controla el audio y el tiempo.</p>
+        <button id="btn-play" class="bg-emerald-600 hover:bg-emerald-500 text-white text-lg font-black px-8 py-2.5 rounded-xl shadow-lg transition transform active:scale-95 inline-flex items-center gap-3 cursor-pointer">
           <span>▶</span>
-          <span>REPRODUCIR AUDICIÓN</span>
+          <span>REPRODUCIR</span>
         </button>
       </div>
     </section>
 
     <!-- Panel de Aciertos y Respuestas de Pizarras -->
-    <section id="aciertos-section" class="mb-6 bg-slate-900/90 border border-slate-800 p-5 md:p-6 rounded-2xl shadow-xl">
-      <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 mb-4">
+    <section id="aciertos-section" class="mb-4 bg-slate-900/90 border border-slate-800 p-3 md:p-4 rounded-xl shadow-lg">
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 mb-3">
         <div>
-          <h2 class="text-xl font-bold text-yellow-400 flex items-center gap-2">
+          <h2 class="text-base md:text-lg font-bold text-yellow-400 flex items-center gap-2">
             <span>📝</span> Registro de Aciertos y Pizarras
           </h2>
-          <p class="text-xs text-slate-300">
+          <p class="text-[11px] text-slate-300">
             Valida los códigos mostrados en las pizarras. Escribe el código o marca el checkbox directamente.
           </p>
         </div>
         
         <div class="flex items-center gap-2">
-          <button id="btn-guardar-aciertos" class="bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-black px-6 py-2.5 rounded-xl shadow-lg transition flex items-center space-x-2 cursor-pointer">
+          <button id="btn-guardar-aciertos" class="bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-black px-4 py-2 rounded-lg text-xs shadow transition flex items-center gap-2 cursor-pointer">
             <span>💾</span>
             <span>Guardar respuestas de esta audición</span>
           </button>
         </div>
       </div>
 
-      <div id="lista-alumnos" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div id="lista-alumnos" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2">
         <!-- Se llena dinámicamente con las tarjetas de alumnos y sus inputs de pizarra -->
       </div>
     </section>
 
     <!-- Controles de Ronda -->
-    <section class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-      <button id="btn-finalizar-ronda" disabled class="bg-rose-700 hover:bg-rose-600 text-white font-bold px-6 py-3.5 rounded-xl shadow-lg transition flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+    <section class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-6">
+      <button id="btn-finalizar-ronda" disabled class="bg-rose-700 hover:bg-rose-600 text-white font-bold px-4 py-2.5 rounded-lg text-sm shadow transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
         <span>✓</span>
         <span>Finalizar Ronda</span>
       </button>
-      <button id="btn-reset-ronda" class="bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold px-6 py-3.5 rounded-xl shadow-lg transition flex items-center justify-center space-x-2 cursor-pointer">
+      <button id="btn-reset-ronda" class="bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold px-4 py-2.5 rounded-lg text-sm shadow transition flex items-center justify-center gap-2 cursor-pointer">
         <span>↺</span>
         <span>Resetear Ronda</span>
       </button>
-      <button id="btn-ver-ranking" class="bg-purple-700 hover:bg-purple-600 text-white font-bold px-6 py-3.5 rounded-xl shadow-lg transition flex items-center justify-center space-x-2 cursor-pointer">
+      <button id="btn-ver-ranking" class="bg-purple-700 hover:bg-purple-600 text-white font-bold px-4 py-2.5 rounded-lg text-sm shadow transition flex items-center justify-center gap-2 cursor-pointer">
         <span>🏆</span>
         <span>Ver Ranking</span>
       </button>

@@ -34,10 +34,10 @@ export function renderRoundTimeline() {
         aria-pressed="${selected}"
         title="${roundConfig.nombre}: ${status}"
         ${selectable ? '' : 'disabled'}
-        class="min-w-32 rounded-xl border px-4 py-3 text-left transition ${selectedStyle} ${selectable ? 'hover:border-yellow-400 cursor-pointer' : 'opacity-45 cursor-not-allowed'}"
+        class="min-w-28 rounded-lg border px-3 py-2 text-left transition ${selectedStyle} ${selectable ? 'hover:border-yellow-400 cursor-pointer' : 'opacity-45 cursor-not-allowed'}"
       >
-        <span class="block font-bold">${roundConfig.nombre}</span>
-        <span class="block mt-1 text-[11px] opacity-80">${status}</span>
+        <span class="block text-xs font-bold">${roundConfig.nombre}</span>
+        <span class="block mt-0.5 text-[10px] opacity-80">${status}</span>
       </button>
     `;
   }).join('');
