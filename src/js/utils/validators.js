@@ -3,12 +3,12 @@
  */
 
 /**
- * Extrae el ID limpio de Google Drive a partir de una URL completa o ID directo.
+ * Extrae el identificador de archivo desde una dirección o un ID directo.
  * Ignora marcadores de posición como [FILE_ID].
  * @param {string} input
  * @returns {string} ID limpio o cadena vacía si no es válido
  */
-export function extractDriveId(input) {
+export function extractFileId(input) {
   if (!input || typeof input !== 'string') return '';
   const trimmed = input.trim();
   
@@ -16,19 +16,19 @@ export function extractDriveId(input) {
   if (trimmed.startsWith('[') && trimmed.endsWith(']')) return '';
   if (trimmed.toLowerCase() === 'file_id' || trimmed === '') return '';
 
-  // Caso 1: URL completa tipo https://drive.google.com/file/d/ID_AQUI/view...
+  // Caso 1: dirección completa que incluye el identificador del archivo.
   const matchFile = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
   if (matchFile && matchFile[1]) return matchFile[1];
 
-  // Caso 2: URL tipo https://drive.google.com/open?id=ID_AQUI o &id=ID_AQUI
+  // Caso 2: dirección con el identificador como parámetro.
   const matchId = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
   if (matchId && matchId[1]) return matchId[1];
 
-  // Caso 3: URL corta tipo /d/ID_AQUI
+  // Caso 3: dirección corta que incluye el identificador.
   const matchD = trimmed.match(/\/d\/([a-zA-Z0-9_-]+)/);
   if (matchD && matchD[1]) return matchD[1];
 
-  // Caso 4: Cadena que ya es un ID de Drive válido (20 a 60 caracteres)
+  // Caso 4: cadena que ya parece un identificador de archivo.
   if (/^[a-zA-Z0-9_-]{20,60}$/.test(trimmed)) {
     return trimmed;
   }
@@ -50,13 +50,12 @@ export function isValidRonda(ronda, maxRondas = (CONFIG.TOTAL_RONDAS || 5)) {
 }
 
 /**
- * Valida si un string parece un ID de archivo válido de Google Drive
- * (típicamente 20-60 caracteres alfanuméricos, guiones y guiones bajos)
+ * Valida si una cadena parece un identificador de archivo válido.
  * @param {string} id
  * @returns {boolean}
  */
 export function isValidFileId(id) {
-  const clean = extractDriveId(id);
+  const clean = extractFileId(id);
   if (!clean) return false;
   return /^[a-zA-Z0-9_-]{20,60}$/.test(clean);
 }

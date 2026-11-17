@@ -4,9 +4,8 @@
  */
 import { appState } from './core/state.js';
 import { api } from './services/api.js';
-import { CONFIG } from './config.js';
-import { AudioPlayer } from './components/audio-player.js';
-import { renderAlumnos, renderAudiciones, renderTimer } from './ui/render.js';
+import { CONFIG, getRoundOptionLabel } from './config.js';
+import { renderAlumnos, renderAudiciones } from './ui/render.js';
 import { setupEventListeners } from './ui/events.js';
 import { DOM } from './ui/dom.js';
 import { initConfigPanel } from './ui/config-panel.js';
@@ -62,8 +61,8 @@ export async function initApp() {
       resultados = resRes.data || [];
       respuestasAudicion = respuestasRes.data || [];
     } catch (netErr) {
-      console.warn('[APP] Aviso de red al conectar backend Apps Script:', netErr);
-      DOM.showToast('Modo sin conexión o URL de Apps Script pendiente. Cargando vista.', 'warning', 4000);
+      console.warn('[APP] Aviso de red al conectar el servicio de datos:', netErr);
+      DOM.showToast('Modo sin conexión o dirección del servicio de datos pendiente. Cargando vista.', 'warning', 4000);
     }
 
     // 2. Establecer estado inicial
@@ -79,29 +78,20 @@ export async function initApp() {
       isLoading: false
     });
 
-    // 3. Inicializar componentes de Audio y Timer
-    const audioElement = DOM.get('audioPlayer');
-    const timerDisplay = DOM.get('timerDisplay');
-    const player = new AudioPlayer(audioElement, timerDisplay, {
-      onComplete: () => console.log('[PLAYER] Audición finalizada')
-    });
-
-    // 4. Configurar event listeners y panel de configuración
-    setupEventListeners(player);
+    // 3. Configurar event listeners y panel de configuración
+    setupEventListeners();
     initConfigPanel();
 
     // 5. Sincronizar selector de ronda
     const selectRonda = DOM.get('selectRonda');
     if (selectRonda) {
       selectRonda.innerHTML = Object.entries(CONFIG.ROUNDS).map(([round, config]) =>
-        `<option value="${round}">${config.nombre} - ${config.audiciones} audiciones de ${config.duracion}s (mínimo: ${config.minimoPasar})</option>`
+        `<option value="${round}">${getRoundOptionLabel(round, config)}</option>`
       ).join('');
       selectRonda.value = String(rondaActual);
     }
 
     // 6. Renderizar UI inicial
-    const duracion = (CONFIG.ROUNDS[rondaActual] || {}).duracion || 40;
-    renderTimer(duracion, duracion);
     renderAudiciones(appState.get());
     renderAlumnos(appState.get());
 
@@ -110,7 +100,7 @@ export async function initApp() {
 
   } catch (error) {
     console.error('❌ Error al inicializar:', error);
-    DOM.showToast('Error al conectar con la base de datos de Google Sheets.', 'error', 5000);
+    DOM.showToast('Error al conectar con la base de datos.', 'error', 5000);
   } finally {
     DOM.hideLoading();
   }

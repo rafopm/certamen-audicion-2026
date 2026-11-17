@@ -7,11 +7,11 @@
 
 ## 📋 Tabla de Contenidos
 1. [Arquitectura del Sistema](#-arquitectura-del-sistema)
-2. [Estructura de Google Sheets (Hoja Maestra)](#-estructura-de-google-sheets)
-3. [Configuración de Google Apps Script (Backend)](#-configuración-de-google-apps-script)
-4. [Subida de Audios a Google Drive y Obtención de File IDs](#-subida-de-audios-a-google-drive)
-5. [Conexión Frontend con Backend](#-conexión-frontend-con-backend)
-6. [Despliegue en GitHub Pages](#-despliegue-en-github-pages)
+2. [Estructura de la Base de Datos](#-estructura-de-la-base-de-datos)
+3. [Configuración del Servicio de Datos](#-configuración-del-servicio-de-datos)
+4. [Archivos de Audio](#-archivos-de-audio)
+5. [Conexión de la Aplicación](#-conexión-de-la-aplicación)
+6. [Publicación](#-publicación)
 7. [Vista de Proyector en Pantalla Gigante](#-vista-de-proyector)
 8. [Backup y Respaldo de Datos](#-backup-y-respaldo-de-datos)
 9. [Troubleshooting y Preguntas Frecuentes](#-troubleshooting)
@@ -20,20 +20,20 @@
 
 ## 🏛 Arquitectura del Sistema
 
-- **Frontend:** HTML5, TailwindCSS (CDN), JavaScript Vanilla modular (ES Modules), Vite 5.
-- **Backend:** Google Apps Script (`Código.gs`) publicado como Web App REST JSON.
-- **Base de Datos:** Google Sheets con 5 hojas maestras.
-- **Almacenamiento de Audios:** Google Drive (soporte para streaming directo y fallback a Base64).
-- **Proyección:** `proyector.html` recibe órdenes de reproducción, carga el audio y sincroniza la cuenta regresiva con el panel.
+- **Interfaz:** aplicación web modular adaptable a computadoras y pantallas de proyección.
+- **Servicio de datos:** recibe las solicitudes de la aplicación y las comunica con la base de datos.
+- **Base de datos:** conserva configuración, participantes, audiciones, resultados y registros.
+- **Almacenamiento de audio:** servicio de archivos configurado para que el proyector pueda cargar las pistas.
+- **Proyección:** `proyector.html` controla la carga, el inicio, el tiempo de reproducción y la detención.
 
 ---
 
-## 📊 Estructura de Google Sheets
+## 📊 Estructura de la Base de Datos
 
-Crea un libro en Google Sheets con estas **7 hojas**. La función `setupInitialSheets` crea las hojas faltantes y sus encabezados.
+La base de datos requiere estas **7 tablas o colecciones**:
 
-### 📑 1. Hoja: `Config`
-Esta hoja es la **fuente de verdad** para todos los parámetros del certamen:
+### 📑 1. Tabla: `Config`
+Esta tabla es la **fuente de verdad** para todos los parámetros del certamen:
 
 | Clave | Valor | Descripción |
 |---|---|---|
@@ -46,26 +46,36 @@ Esta hoja es la **fuente de verdad** para todos los parámetros del certamen:
 | `DURACION_RONDA_1` | 40 | Segundos por audición en Ronda 1 |
 | `NUM_AUDICIONES_RONDA_1` | 4 | Cantidad de audiciones en Ronda 1 |
 | `MINIMO_PASAR_RONDA_1` | 2 | Mínimo para pasar en Ronda 1 |
+| `PUNTOS_POR_ACIERTO_RONDA_1` | 1 | Puntos por cada acierto en Ronda 1 |
+| `BONUS_POR_CLASIFICAR_RONDA_1` | 0 | Bonus único al clasificar en Ronda 1 |
 | `DURACION_RONDA_2` | 20 | Segundos por audición en Ronda 2 |
 | `NUM_AUDICIONES_RONDA_2` | 4 | Cantidad de audiciones en Ronda 2 |
 | `MINIMO_PASAR_RONDA_2` | 2 | Mínimo para pasar en Ronda 2 |
+| `PUNTOS_POR_ACIERTO_RONDA_2` | 1 | Puntos por cada acierto en Ronda 2 |
+| `BONUS_POR_CLASIFICAR_RONDA_2` | 0 | Bonus único al clasificar en Ronda 2 |
 | `DURACION_RONDA_3` | 10 | Segundos por audición en Ronda 3 |
 | `NUM_AUDICIONES_RONDA_3` | 3 | Cantidad de audiciones en Ronda 3 |
 | `MINIMO_PASAR_RONDA_3` | 2 | Mínimo para pasar en Ronda 3 |
+| `PUNTOS_POR_ACIERTO_RONDA_3` | 1 | Puntos por cada acierto en Ronda 3 |
+| `BONUS_POR_CLASIFICAR_RONDA_3` | 0 | Bonus único al clasificar en Ronda 3 |
 | `DURACION_RONDA_4` | 5 | Segundos por audición en Ronda 4 |
 | `NUM_AUDICIONES_RONDA_4` | 3 | Cantidad de audiciones en Ronda 4 |
 | `MINIMO_PASAR_RONDA_4` | 2 | Mínimo para pasar en Ronda 4 |
+| `PUNTOS_POR_ACIERTO_RONDA_4` | 1 | Puntos por cada acierto en Ronda 4 |
+| `BONUS_POR_CLASIFICAR_RONDA_4` | 0 | Bonus único al clasificar en Ronda 4 |
 | `DURACION_RONDA_FINAL` | 2 | Segundos por audición en Ronda Final |
 | `NUM_AUDICIONES_RONDA_FINAL` | 3 | Cantidad de audiciones en Ronda Final |
 | `MINIMO_PASAR_RONDA_FINAL` | 3 | Mínimo para ganar en Ronda Final |
+| `PUNTOS_POR_ACIERTO_RONDA_FINAL` | 1 | Puntos por cada acierto en la Ronda Final |
+| `BONUS_POR_CLASIFICAR_RONDA_FINAL` | 0 | Bonus único al alcanzar el mínimo para ganar |
 | `PREMIOS_PRIMER_PUESTO` | Diploma, medalla y premio sorpresa | Premio 1° |
 | `PREMIOS_SEGUNDO_PUESTO` | Diploma, medalla y premio sorpresa | Premio 2° |
 | `PREMIOS_TERCER_PUESTO` | Diploma y medalla | Premio 3° |
 | `API_VERSION` | 1.0.0 | Versión de la API |
 
-### 📑 2. Hoja: `Canciones`
+### 📑 2. Tabla: `Canciones`
 Cabeceras en Fila 1:  
-`ID` | `Nombre` | `Codigo` | `Archivo_Drive_ID` | `Año` | `Activa`
+`ID` | `Nombre` | `Codigo` | `Archivo_ID` | `Año` | `Activa`
 
 Ejemplo de datos:
 ```
@@ -81,7 +91,7 @@ Ejemplo de datos:
 10 | PERSISCHER MARSCH     | PM0205 | 1A2b3C4d... | 2026 | TRUE
 ```
 
-### 📑 3. Hoja: `Alumnos`
+### 📑 3. Tabla: `Alumnos`
 Cabeceras en Fila 1:  
 `ID` | `Nombre` | `Grado` | `Nivel` | `Año` | `Activo`
 
@@ -93,7 +103,7 @@ Ejemplo:
 4 | Sebastián Mendoza  | 2do | Secundaria | 2026 | TRUE
 ```
 
-### 📑 4. Hoja: `Audiciones_Ronda`
+### 📑 4. Tabla: `Audiciones_Ronda`
 Cabeceras en Fila 1:  
 `Ronda` | `Audicion_Num` | `Cancion_ID` | `Orden`
 
@@ -107,19 +117,19 @@ Ejemplo:
 ...
 ```
 
-### 📑 5. Hoja: `Resultados`
+### 📑 5. Tabla: `Resultados`
 Cabeceras en Fila 1:  
 `Alumno_ID` | `Alumno_Nombre` | `Grado` | `Ronda` | `Aciertos` | `Eliminado` | `Puntos_Total` | `Timestamp` | `Ronda_Eliminacion`
 
 *(Se actualiza al guardar las respuestas y se completa al finalizar la ronda.)*
 
-### 📑 6. Hoja: `Respuestas_Audicion`
+### 📑 6. Tabla: `Respuestas_Audicion`
 Cabeceras en Fila 1:  
 `Alumno_ID` | `Ronda` | `Audicion_Num` | `Respuesta` | `Correcto` | `Fecha_Hora`
 
 *(Guarda una respuesta correcta o un error por participante y audición. Una respuesta vacía también se registra como error.)*
 
-### 📑 7. Hoja: `Log_Reproducciones` (Auditoría en Tiempo Real)
+### 📑 7. Tabla: `Log_Reproducciones` (Auditoría en Tiempo Real)
 Cabeceras en Fila 1:  
 `ID` | `Ronda` | `Audicion_Num` | `Cancion_ID` | `Cancion_Nombre` | `Cancion_Codigo` | `Segundo_Inicio` | `Segundo_Fin` | `Duracion_Seg` | `Fecha_Hora` | `Timestamp`
 
@@ -127,91 +137,45 @@ Cabeceras en Fila 1:
 
 ## 🧭 Flujo del certamen
 
-1. En **Rondas y reglas**, define la cantidad de rondas y, para cada una, las audiciones, duración y mínimo para clasificar. Los valores actuales aparecen como editables.
+1. En **Rondas y reglas**, define la cantidad de rondas y, para cada una, las audiciones, duración, mínimo para clasificar, puntos por acierto y bonus por clasificar. El bonus se suma una sola vez cuando el participante alcanza el mínimo; en la ronda final, al alcanzar el mínimo para ganar.
 2. Guarda las canciones activas en **Canciones**.
 3. En **Sorteo de canciones**, genera y guarda la distribución. Una canción no se repite dentro de una ronda. Si cambias el sorteo después de guardar resultados, confirma el reinicio antes de continuar.
 4. Durante una ronda, reproduce una audición, revisa las pizarras y guarda una respuesta por cada participante elegible. Los campos vacíos o incorrectos se guardan como error.
 5. El botón **Siguiente** solo se habilita cuando las respuestas están guardadas y sin cambios pendientes. La ronda no puede finalizar hasta completar todas sus audiciones.
-6. Al finalizar la ronda se calcula quién clasifica según su mínimo configurado. El sistema avanza a la siguiente ronda; para modificar una ronda cerrada, usa **Resetear ronda**, que también borra los datos de las rondas posteriores.
+6. Al finalizar la ronda se calcula quién clasifica según su mínimo de aciertos, se actualizan los puntos y la ronda queda marcada como **Completada**. El panel permanece en esa ronda; selecciona manualmente la siguiente cuando quieras continuar. Para modificar una ronda cerrada, usa **Resetear ronda**, que también borra los datos de las rondas posteriores.
 
-Al cambiar reglas con actividad registrada, el panel solicitará confirmar el reinicio de respuestas y resultados. El sorteo también se limpia y debe generarse de nuevo.
-
----
-
-## ⚡ Configuración de Google Apps Script
-
-1. En tu hoja de cálculo, ve al menú: **Extensiones** > **Apps Script**.
-2. Reemplaza cualquier código existente pegando íntegramente el archivo `Codigo.gs` del repositorio.
-3. **Inicialización automática (Opcional pero muy útil):**
-   - En la barra superior de Apps Script, selecciona la función `setupInitialSheets` en el menú desplegable y presiona **Ejecutar**.
-   - Concede los permisos que Google solicite. Esta función creará o verificará las hojas y sus valores predeterminados.
-4. **Despliegue como Web App:**
-   - Haz clic en el botón azul superior **Implementar** (Deploy) > **Nueva implementación** (New deployment).
-   - Haz clic en el engranaje ⚙️ junto a "Seleccionar tipo" y elige **Aplicación web**.
-   - **Descripción:** `Certamen 2026`
-   - **Ejecutar como:** `Yo (tu_correo@gmail.com)`
-   - **Quién tiene acceso:** `Cualquiera` (*Anyone* - fundamental para que la app web y el proyector puedan acceder sin iniciar sesión).
-   - Haz clic en **Implementar**.
-5. Copia la **URL de la aplicación web** generada (termina en `/exec`).
-
-Cada vez que actualices `Codigo.gs`, implementa una nueva versión de la aplicación web para que el panel use los endpoints de respuestas y validaciones actuales.
+Al cambiar reglas o puntajes con actividad registrada, el panel solicitará confirmar el reinicio de respuestas y resultados. Cambiar parámetros de ronda también limpia el sorteo; cambiar solo los puntajes conserva el sorteo.
 
 ---
 
-## 🎵 Subida de Audios a Google Drive
+## ⚡ Configuración del Servicio de Datos
 
-Para reproducir los audios sin bloqueos:
-
-1. Sube tus archivos `.mp3` o `.m4a` a una carpeta de Google Drive.
-2. Haz clic derecho sobre la carpeta o cada archivo > **Compartir** > **Compartir**.
-3. En *Acceso general*, cámbialo a **Cualquier persona con el enlace** (Lector).
-4. Para obtener el `FILE_ID`:
-   - Copia el enlace del archivo:  
-     `https://drive.google.com/file/d/1A2b3C4d5E6F7G8H9I0J/view?usp=sharing`
-   - El `FILE_ID` es la cadena entre `/d/` y `/view`:  
-     `1A2b3C4d5E6F7G8H9I0J`
-5. Pega ese código en la columna `Archivo_Drive_ID` de la hoja `Canciones`.
-
-El panel envía la orden al proyector, que descarga el audio desde Apps Script como Base64 y lo conserva temporalmente en caché. La caché mantiene como máximo una pista. Cuando termina la carga, el proyector inicia una cuenta regresiva de 5 segundos; el panel sincroniza su temporizador con esa hora. El audio suena únicamente en la computadora conectada al proyector.
+1. Prepara la base de datos con las tablas y campos descritos en este documento.
+2. Configura el servicio de datos para leer y guardar la configuración, los participantes, las respuestas, los resultados y los registros de reproducción.
+3. Configura los permisos de acceso para que la aplicación y la pantalla de proyección puedan comunicarse con el servicio.
+4. Publica los cambios del servicio antes de iniciar el certamen. Después de cada actualización, verifica que la aplicación se conecte correctamente.
 
 ---
 
-## 🔗 Conexión Frontend con Backend
+## 🎵 Archivos de Audio
 
-1. Abre el archivo `src/js/config.js`.
-2. Actualiza la variable `API_URL` con la URL de tu Web App de Apps Script:
+1. Carga las pistas en el servicio de almacenamiento de archivos elegido.
+2. Concede al servicio de datos permiso para obtener los archivos.
+3. Copia el identificador o la dirección de cada archivo en el campo de archivo correspondiente de la tabla `Canciones`.
 
-```javascript
-export const CONFIG = {
-  API_URL: 'https://script.google.com/macros/s/AKfycbx...TU_ID.../exec',
-  // ... resto de configuración
-};
-```
-
-3. Prueba en tu entorno local:
-```bash
-npm run dev
-```
+El panel envía la orden y registra el resultado, pero no reproduce audio ni controla su temporizador. La pantalla de proyección carga la pista, se posiciona en el segundo seleccionado antes de la cuenta regresiva de 5 segundos y controla la duración completa. La caché mantiene como máximo una pista.
 
 ---
 
-## 🚀 Despliegue en GitHub Pages
+## 🔗 Conexión de la Aplicación
 
-1. Verifica que en `vite.config.js` la propiedad `base` coincida con el nombre de tu repositorio:
-```javascript
-base: command === 'serve' ? '/' : '/certamen-audicion-2026/'
-```
-2. Ejecuta el comando de compilación y despliegue:
-```bash
-npm run deploy
-```
-*(Este comando ejecuta `vite build` y publica la carpeta `dist` en la rama `gh-pages` con el paquete `gh-pages`).*
+Configura en `src/js/config.js` la dirección del servicio de datos. Verifica la conexión desde el entorno de prueba antes de publicar la aplicación.
 
-3. En GitHub, ve a **Settings** > **Pages** de tu repositorio:
-   - **Source:** Deploy from a branch
-   - **Branch:** `gh-pages` / `/ (root)`
-   - Guarda los cambios. Tu sitio estará disponible en minutos en:  
-     `https://tu-usuario.github.io/certamen-audicion-2026/`
+---
+
+## 🚀 Publicación
+
+Publica la aplicación web mediante el servicio de alojamiento elegido. Si se publica dentro de una subcarpeta, configura la ruta base de la aplicación para que coincida con esa ubicación. Después de publicar, comprueba la página principal, el panel del jurado y la pantalla de proyección.
 
 ---
 
@@ -221,7 +185,7 @@ Para la pantalla gigante del auditorio:
 - Accede a `proyector.html` (o haz clic en el botón **Abrir Proyector** en la cabecera).
 - En esa computadora, pulsa una vez **Activar audio** para permitir la reproducción del navegador.
 - Mantén esa página abierta durante el certamen. Al pulsar **Reproducir Audición** en el panel, la pantalla muestra la carga del archivo y, al terminar, la cuenta regresiva de 5 segundos antes de reproducir.
-- El panel permite detener la audición y registra el rango reproducido en Google Sheets al terminar.
+- El panel permite solicitar la detención y registra en la base de datos el rango y la duración reportados por el proyector.
 - La pantalla cuenta con:
   - Temporizador gigante con tipografía clásica.
   - Indicador de estado en tiempo real (**EN VIVO**).
@@ -229,34 +193,34 @@ Para la pantalla gigante del auditorio:
   - Tabla completa de posiciones.
   - Botón de **Pantalla Completa** (o presiona F11).
   - Efecto de **Confeti** festivo al culminar el certamen.
-  - Polling cada 2 segundos sin necesidad de recargar la página.
+  - Actualización automática cada 2 segundos, sin necesidad de recargar la página.
 
 ---
 
 ## 💾 Backup y Respaldo de Datos
 
-- **Antes del evento:** Ve a Google Sheets > **Archivo** > **Hacer una copia**.
-- **Durante el evento:** Cada vez que el jurado presiona **Guardar Aciertos** o **Finalizar Ronda**, Google Sheets almacena una fila con timestamp exacto.
-- **En caso de emergencia (Falla total de internet):**
+- **Antes del evento:** Crea una copia de respaldo de la base de datos.
+- **Durante el evento:** Al guardar respuestas o finalizar una ronda, la base de datos almacena los resultados con su fecha y hora.
+- **En caso de interrupción del servicio de datos:**
   - Los datos locales se mantienen en memoria del navegador mientras no se cierre la pestaña.
-  - La hoja de cálculo puede ser editada directamente desde un celular u otra laptop y el proyector reflejará los cambios en 2 segundos.
+  - Una vez restablecido el servicio, verifica que los datos pendientes se hayan guardado antes de continuar.
 
 ---
 
 ## 🛠 Troubleshooting
 
-### 1. Error de CORS en Google Apps Script
-- **Causa:** Apps Script no fue desplegado con acceso para "Cualquiera" (*Anyone*).
-- **Solución:** Ve a Apps Script > **Implementar** > **Gestionar implementaciones** > Editar > asegúrate de que **Quién tiene acceso** sea **Cualquiera**. Cada vez que modifiques `Código.gs`, debes crear una **Nueva versión** del despliegue.
+### 1. La aplicación no conecta con la base de datos
+- **Causa:** La dirección o los permisos del servicio de datos no son correctos.
+- **Solución:** Verifica la dirección configurada, los permisos de acceso y que la versión publicada del servicio esté disponible.
 
 ### 2. Los audios no suenan o quedan en carga
 - Confirma que `proyector.html` esté abierto y que se haya pulsado **Activar audio** en esa computadora.
-- Verifica que el archivo de Drive permita lectura a **Cualquier persona con el enlace** y que el proyecto de Apps Script esté desplegado con la versión más reciente de `Codigo.gs`.
+- Verifica que el archivo exista, que el servicio de datos tenga permiso para leerlo y que la conexión esté disponible.
 - Revisa el mensaje de estado en la pantalla del proyector para identificar si falló la descarga, la decodificación o el inicio de reproducción.
 
-### 3. GitHub Pages muestra una página en blanco
-- **Causa:** El path `base` en `vite.config.js` no coincide con el subpath del repositorio.
-- **Solución:** Verifica que `base: '/certamen-audicion-2026/'` tenga las barras diagonales al inicio y final.
+### 3. La aplicación no aparece en la dirección publicada
+- **Causa:** La ruta base configurada no coincide con la ubicación de publicación.
+- **Solución:** Ajusta la ruta base para que corresponda a la dirección elegida y vuelve a publicar la aplicación.
 
 ---
 

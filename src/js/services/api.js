@@ -1,5 +1,5 @@
 /**
- * Cliente para comunicarse con Google Apps Script.
+ * Cliente para comunicarse con el servicio de datos.
  * Centraliza todas las llamadas HTTP y el manejo de errores.
  */
 import { CONFIG } from '../config.js';

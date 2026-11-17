@@ -1,6 +1,6 @@
 /**
  * Script de la Vista de Proyector (Pantalla Grande).
- * Sincronización continua vía polling cada 2s con el backend de Google Apps Script.
+ * Sincronización continua cada 2s con el servicio de datos.
  * Soporta los 3 modos oficiales:
  * 1. 'AUDICION': Solo temporizador gigante y foco musical (sin ranking público).
  * 2. 'CLASIFICADOS': Muestra únicamente a los clasificados al concluir cada ronda.
@@ -15,12 +15,25 @@ let lastRonda = null;
 let lastModo = null;
 let confettiTriggered = false;
 let audioActivated = false;
+let hasProjectorControl = false;
+let projectorControlLockPending = false;
+let releaseProjectorControlLock = null;
 let activePlaybackCommandId = null;
+const handledPlaybackCommandIds = new Set();
+let playAttemptCommandId = null;
 let playbackInterval = null;
+let playbackStopTimeout = null;
 let countdownInterval = null;
+let playbackSyncTimeout = null;
 let completionRetryTimeout = null;
 let activationWaiters = [];
 let completionSent = false;
+let playbackStarting = false;
+let stopRequestHandled = false;
+let playbackStartedAt = null;
+let playbackDuration = 0;
+let playbackStateConfirmed = false;
+let playbackStatePromise = Promise.resolve();
 
 // Elementos DOM
 const elRondaNombre = document.getElementById('proj-ronda-nombre');
@@ -55,13 +68,36 @@ async function initProyector() {
   }
 
   if (btnActivateAudio) {
-    btnActivateAudio.addEventListener('click', () => {
-      audioActivated = true;
-      btnActivateAudio.textContent = '🔊 Audio activado';
+    btnActivateAudio.addEventListener('click', async () => {
+      if (projectorControlLockPending || audioActivated) return;
+      projectorControlLockPending = true;
       btnActivateAudio.disabled = true;
-      btnActivateAudio.classList.add('opacity-60', 'cursor-default');
-      resolveActivationWaiters(true);
-      setAudioStatus('Audio del proyector activado; esperando la audición del jurado.');
+      btnActivateAudio.textContent = '⏳ Activando audio...';
+      try {
+        hasProjectorControl = await adquirirControlProyector();
+        if (!hasProjectorControl) {
+          btnActivateAudio.disabled = false;
+          btnActivateAudio.textContent = '🔊 Activar audio';
+          setAudioStatus('Esta audición ya está controlada por otra ventana del proyector.');
+          return;
+        }
+        await desbloquearAudio();
+        audioActivated = true;
+        btnActivateAudio.textContent = '🔊 Audio activado';
+        btnActivateAudio.disabled = true;
+        btnActivateAudio.classList.add('opacity-60', 'cursor-default');
+        resolveActivationWaiters(true);
+        setAudioStatus('Audio del proyector activado; esperando la audición del jurado.');
+      } catch (error) {
+        liberarControlProyector();
+        hasProjectorControl = false;
+        btnActivateAudio.disabled = false;
+        btnActivateAudio.textContent = '🔊 Activar audio';
+        console.error('[PROYECTOR] El navegador no permitió activar el audio:', error);
+        setAudioStatus('⚠️ No se pudo activar el audio. Vuelve a pulsar el botón e inténtalo otra vez.');
+      } finally {
+        projectorControlLockPending = false;
+      }
     });
   }
 }
@@ -71,20 +107,20 @@ async function initProyector() {
  */
 async function updateProyector() {
   try {
-    const requestStartedAt = Date.now();
     const estadoRes = await api.getEstadoCertamen().catch(() => null);
 
     if (estadoRes && estadoRes.data) {
-      const responseReceivedAt = Date.now();
       const estado = estadoRes.data;
       renderEstado(estado);
-      sincronizarReproduccion(
-        estado.reproduccionProyector,
-        calcularDesfaseServidor(estado.reproduccionProyector, requestStartedAt, responseReceivedAt)
-      );
+      sincronizarReproduccion(estado.reproduccionProyector);
 
       // Sincronizar modo visual
-      const modo = estado.modoProyector || 'AUDICION';
+      const modoSolicitado = estado.modoProyector || 'AUDICION';
+      const modo = modoSolicitado === 'CLASIFICADOS' && !estado.rondaCerrada
+        ? 'AUDICION'
+        : modoSolicitado === 'RANKING_FINAL' && !estado.certamenFinalizado
+          ? 'AUDICION'
+          : modoSolicitado;
       aplicarModoVisual(modo, estado);
 
       if (elLiveIndicator) {
@@ -100,26 +136,38 @@ async function updateProyector() {
   }
 }
 
-function sincronizarReproduccion(estado, serverOffsetMs = 0) {
+function sincronizarReproduccion(estado) {
   if (!estado || !estado.commandId) return;
 
   const commandId = String(estado.commandId);
   if (estado.status === 'loading') {
     if (activePlaybackCommandId !== commandId) {
+      if (!hasProjectorControl) {
+        setAudioStatus('Activa el audio en esta ventana para controlar la reproducción.');
+        return;
+      }
+      if (handledPlaybackCommandIds.has(commandId)) return;
+      handledPlaybackCommandIds.add(commandId);
       activePlaybackCommandId = commandId;
       completionSent = false;
+      stopRequestHandled = false;
+      iniciarConsultaReproduccion();
       prepararReproduccion(estado).catch(error => {
         console.error('[PROYECTOR] No se pudo preparar la pista:', error);
         marcarErrorReproduccion(commandId, error);
       });
     }
-    return;
   }
 
   if (commandId !== activePlaybackCommandId) return;
+  if (estado.stopRequested && ['loading', 'countdown', 'playing'].includes(estado.status)) {
+    detenerReproduccionPorOrden(commandId);
+    return;
+  }
+  if (estado.status === 'loading') return;
 
-  if (estado.status === 'countdown' && !countdownInterval && !playbackInterval) {
-    iniciarCuentaRegresiva(estado, serverOffsetMs);
+  if (estado.status === 'countdown' && !countdownInterval && !playbackStarting && !playbackInterval) {
+    iniciarCuentaRegresiva(estado);
   } else if (estado.status === 'cancelled' || estado.status === 'error' || estado.status === 'completed') {
     limpiarReproduccion();
     if (estado.status === 'cancelled') setAudioStatus('Audición detenida desde el panel del jurado.');
@@ -133,12 +181,12 @@ async function prepararReproduccion(estado) {
   setAudioStatus(`⏳ Cargando archivo para la audición ${estado.audicionNum}...`);
   try {
     const audioUrl = await preloadAudio(estado.fileId);
-    if (activePlaybackCommandId !== commandId) return;
+    if (activePlaybackCommandId !== commandId || stopRequestHandled) return;
 
     await cargarAudioEnElemento(audioUrl);
     setAudioStatus('Pista cargada. Activa el audio en esta computadora para continuar.');
     const activated = await esperarActivacionAudio();
-    if (!activated || activePlaybackCommandId !== commandId) return;
+    if (!activated || activePlaybackCommandId !== commandId || stopRequestHandled) return;
 
     const current = await api.getReproduccionProyector();
     if (!current.data || String(current.data.commandId) !== commandId || current.data.status !== 'loading') {
@@ -158,18 +206,55 @@ async function prepararReproduccion(estado) {
     const startSec = estado.randomStart && maxStart > 0
       ? Math.floor(Math.random() * (maxStart + 1))
       : 0;
-    const requestStartedAt = Date.now();
+    await posicionarAudio(startSec);
+    if (activePlaybackCommandId !== commandId || stopRequestHandled) return;
     const response = await api.actualizarReproduccionProyector({
       commandId,
       status: 'countdown',
       startSec
     });
     if (activePlaybackCommandId === commandId && response.data) {
-      iniciarCuentaRegresiva(response.data, calcularDesfaseServidor(response.data, requestStartedAt, Date.now()));
+      iniciarCuentaRegresiva(response.data);
     }
   } catch (error) {
     if (activePlaybackCommandId === commandId) throw error;
   }
+}
+
+function posicionarAudio(startSec) {
+  if (!elAudio || startSec <= 0 || Math.abs(elAudio.currentTime - startSec) < 0.05) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error('No se pudo posicionar la pista en el segundo seleccionado.'));
+    }, 10000);
+    const cleanup = () => {
+      clearTimeout(timeout);
+      elAudio.removeEventListener('seeked', onSeeked);
+      elAudio.removeEventListener('error', onError);
+    };
+    const onSeeked = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error('Error al posicionar la pista de audio.'));
+    };
+
+    elAudio.addEventListener('seeked', onSeeked, { once: true });
+    elAudio.addEventListener('error', onError, { once: true });
+    try {
+      elAudio.currentTime = startSec;
+      if (!elAudio.seeking && Math.abs(elAudio.currentTime - startSec) < 0.05) onSeeked();
+    } catch (error) {
+      cleanup();
+      reject(error);
+    }
+  });
 }
 
 function cargarAudioEnElemento(audioUrl) {
@@ -221,72 +306,164 @@ function resolveActivationWaiters(activated) {
   waiters.forEach(resolve => resolve(activated));
 }
 
-function iniciarCuentaRegresiva(estado, serverOffsetMs = 0) {
-  if (countdownInterval || playbackInterval) return;
-  const commandId = String(estado.commandId);
-  const startAt = Date.parse(estado.startAt);
-  if (!Number.isFinite(startAt)) {
-    marcarErrorReproduccion(commandId, new Error('El servidor devolvió una hora de inicio inválida.'));
-    return;
+function adquirirControlProyector() {
+  if (!navigator.locks || typeof navigator.locks.request !== 'function') {
+    return Promise.resolve(true);
   }
+  return new Promise((resolve, reject) => {
+    navigator.locks.request('certamen-audicion-proyector', { ifAvailable: true }, lock => {
+      if (!lock) {
+        resolve(false);
+        return;
+      }
+      resolve(true);
+      return new Promise(release => {
+        releaseProjectorControlLock = release;
+      });
+    }).catch(reject);
+  });
+}
 
+function liberarControlProyector() {
+  if (!releaseProjectorControlLock) return;
+  releaseProjectorControlLock();
+  releaseProjectorControlLock = null;
+}
+
+function desbloquearAudio() {
+  const silentAudio = new Audio('data:audio/wav;base64,UklGRiUAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQEAAACA');
+  silentAudio.muted = true;
+  return silentAudio.play().then(() => {
+    silentAudio.pause();
+    silentAudio.removeAttribute('src');
+  });
+}
+
+function iniciarConsultaReproduccion() {
+  if (playbackSyncTimeout || !activePlaybackCommandId) return;
+  playbackSyncTimeout = setTimeout(async () => {
+    playbackSyncTimeout = null;
+    const commandId = activePlaybackCommandId;
+    if (!commandId) return;
+
+    try {
+      const response = await api.getReproduccionProyector();
+      if (activePlaybackCommandId === commandId && response.data) {
+        sincronizarReproduccion(response.data);
+      }
+    } catch (error) {
+      console.warn('[PROYECTOR] No se pudo consultar la orden activa:', error);
+    }
+
+    if (activePlaybackCommandId === commandId) iniciarConsultaReproduccion();
+  }, 500);
+}
+
+function iniciarCuentaRegresiva(estado) {
+  if (countdownInterval || playbackStarting || playbackInterval) return;
+  const commandId = String(estado.commandId);
+  const countdownEndsAt = performance.now() + 5000;
   if (elTimer) elTimer.dataset.running = 'true';
+  cambiarColorTemporizador(true);
+  if (elTimer) elTimer.textContent = '5';
+  setAudioStatus('Preparados');
   countdownInterval = setInterval(() => {
     if (activePlaybackCommandId !== commandId) {
       clearInterval(countdownInterval);
       countdownInterval = null;
       return;
     }
-    const seconds = Math.max(0, Math.ceil((startAt - Date.now() - serverOffsetMs) / 1000));
-    if (elTimer) elTimer.textContent = String(seconds || Number(estado.duration));
-    setAudioStatus(seconds > 0
-      ? `✅ Archivo cargado. La audición inicia en ${seconds}...`
-      : '🔊 Iniciando reproducción...');
+    const seconds = Math.max(0, Math.ceil((countdownEndsAt - performance.now()) / 1000));
     if (seconds <= 0) {
+      if (elTimer) elTimer.textContent = '1';
       clearInterval(countdownInterval);
       countdownInterval = null;
-      reproducirPista(estado, startAt, serverOffsetMs).catch(error => marcarErrorReproduccion(commandId, error));
+      playbackStarting = true;
+      reproducirPista(estado)
+        .catch(error => marcarErrorReproduccion(commandId, error));
+    } else if (elTimer) {
+      elTimer.textContent = String(seconds);
     }
   }, 100);
 }
 
-async function reproducirPista(estado, startAt, serverOffsetMs) {
+async function reproducirPista(estado) {
   const commandId = String(estado.commandId);
   if (activePlaybackCommandId !== commandId || !elAudio) return;
+  if (playAttemptCommandId === commandId) return;
+  playAttemptCommandId = commandId;
   try {
-    elAudio.currentTime = Number(estado.startSec) || 0;
     await elAudio.play();
-    if (activePlaybackCommandId !== commandId) {
+    if (activePlaybackCommandId !== commandId || stopRequestHandled) {
       elAudio.pause();
       return;
     }
 
-    await api.actualizarReproduccionProyector({ commandId, status: 'playing' });
-    const endAt = startAt - serverOffsetMs + Number(estado.duration) * 1000;
+    playbackStarting = false;
+    playbackStartedAt = performance.now();
+    playbackDuration = Number(estado.duration);
+    playbackStateConfirmed = false;
+    playbackStatePromise = api.actualizarReproduccionProyector({
+      commandId,
+      status: 'playing'
+    }).then(() => {
+      playbackStateConfirmed = true;
+    });
+    playbackStatePromise.catch(error => {
+      console.error('[PROYECTOR] No se pudo confirmar el inicio; se reintentará al terminar:', error);
+    });
+
+    if (elTimer) elTimer.textContent = String(playbackDuration);
+    cambiarColorTemporizador(false);
     setAudioStatus('🔊 Reproduciendo audición.');
     playbackInterval = setInterval(() => {
-      const remaining = Math.max(0, Math.ceil((endAt - Date.now()) / 1000));
-      if (elTimer) elTimer.textContent = String(remaining);
-      if (remaining <= 0) completarReproduccion(commandId);
+      const elapsed = (performance.now() - playbackStartedAt) / 1000;
+      const elapsedSeconds = Math.min(playbackDuration, Math.floor(elapsed) + 1);
+      if (elTimer) elTimer.textContent = String(elapsedSeconds);
     }, 100);
-    elAudio.onended = () => completarReproduccion(commandId);
+    programarFinReproduccion(commandId);
+    elAudio.onended = () => {
+      const elapsed = playbackStartedAt === null ? 0 : (performance.now() - playbackStartedAt) / 1000;
+      if (elapsed + 0.1 >= playbackDuration) {
+        completarReproduccion(commandId);
+      } else {
+        marcarErrorReproduccion(commandId, new Error('El archivo terminó antes de completar el tiempo solicitado.'));
+      }
+    };
   } catch (error) {
     elAudio.pause();
     throw error;
   }
 }
 
+function programarFinReproduccion(commandId) {
+  if (playbackStartedAt === null || activePlaybackCommandId !== commandId) return;
+  const remainingMs = playbackDuration * 1000 - (performance.now() - playbackStartedAt);
+  if (remainingMs <= 0) {
+    completarReproduccion(commandId);
+    return;
+  }
+  playbackStopTimeout = setTimeout(() => programarFinReproduccion(commandId), remainingMs);
+}
+
 async function completarReproduccion(commandId) {
   if (activePlaybackCommandId !== commandId || completionSent) return;
   completionSent = true;
   if (playbackInterval) clearInterval(playbackInterval);
+  if (playbackStopTimeout) clearTimeout(playbackStopTimeout);
   playbackInterval = null;
+  playbackStopTimeout = null;
   if (elAudio) {
     elAudio.pause();
     elAudio.onended = null;
   }
   try {
-    await api.actualizarReproduccionProyector({ commandId, status: 'completed' });
+    await confirmarInicioReproduccion(commandId);
+    await api.actualizarReproduccionProyector({
+      commandId,
+      status: 'completed',
+      playedDuration: playbackDuration
+    });
     limpiarReproduccion();
     setAudioStatus('Audición finalizada.');
   } catch (error) {
@@ -297,16 +474,64 @@ async function completarReproduccion(commandId) {
   }
 }
 
+async function confirmarInicioReproduccion(commandId) {
+  if (playbackStateConfirmed) return;
+  try {
+    try {
+      await playbackStatePromise;
+      if (playbackStateConfirmed) return;
+    } catch (error) {
+      console.warn('[PROYECTOR] Se reintentará confirmar el inicio:', error);
+    }
+    const current = await api.getReproduccionProyector();
+    if (current.data && String(current.data.commandId) === commandId && current.data.status === 'playing') {
+      playbackStateConfirmed = true;
+      return;
+    }
+    await api.actualizarReproduccionProyector({ commandId, status: 'playing' });
+    playbackStateConfirmed = true;
+  } catch (error) {
+    throw error;
+  }
+}
+
+async function detenerReproduccionPorOrden(commandId) {
+  if (activePlaybackCommandId !== commandId || stopRequestHandled) return;
+  stopRequestHandled = true;
+  const playedDuration = obtenerDuracionReproducida();
+  if (elAudio) {
+    elAudio.pause();
+    elAudio.onended = null;
+  }
+  try {
+    const data = { commandId, status: 'cancelled' };
+    if (playbackStartedAt !== null) data.playedDuration = playedDuration;
+    await api.actualizarReproduccionProyector(data);
+    limpiarReproduccion();
+    setAudioStatus('Audición detenida desde el panel del jurado.');
+  } catch (error) {
+    console.error('[PROYECTOR] No se pudo confirmar la detención:', error);
+    stopRequestHandled = false;
+  }
+}
+
+function obtenerDuracionReproducida() {
+  if (playbackStartedAt === null) return 0;
+  return Math.min(playbackDuration, Math.max(0, (performance.now() - playbackStartedAt) / 1000));
+}
+
 async function marcarErrorReproduccion(commandId, error) {
   if (activePlaybackCommandId !== commandId) return;
   console.error('[PROYECTOR] Error de reproducción:', error);
+  const playedDuration = obtenerDuracionReproducida();
   limpiarReproduccion();
   setAudioStatus(`⚠️ Error de audio: ${error.message}`);
   try {
     await api.actualizarReproduccionProyector({
       commandId,
       status: 'error',
-      error: error.message
+      error: error.message,
+      playedDuration
     });
   } catch (updateError) {
     console.error('[PROYECTOR] No se pudo notificar el error al panel:', updateError);
@@ -317,10 +542,21 @@ function limpiarReproduccion() {
   activePlaybackCommandId = null;
   if (countdownInterval) clearInterval(countdownInterval);
   if (playbackInterval) clearInterval(playbackInterval);
+  if (playbackStopTimeout) clearTimeout(playbackStopTimeout);
+  if (playbackSyncTimeout) clearTimeout(playbackSyncTimeout);
   if (completionRetryTimeout) clearTimeout(completionRetryTimeout);
   countdownInterval = null;
   playbackInterval = null;
+  playbackStopTimeout = null;
+  playbackSyncTimeout = null;
   completionRetryTimeout = null;
+  playbackStarting = false;
+  stopRequestHandled = false;
+  playbackStartedAt = null;
+  playbackDuration = 0;
+  playAttemptCommandId = null;
+  playbackStateConfirmed = false;
+  playbackStatePromise = Promise.resolve();
   resolveActivationWaiters(false);
   if (elAudio) {
     elAudio.pause();
@@ -329,17 +565,22 @@ function limpiarReproduccion() {
     elAudio.load();
   }
   if (elTimer) delete elTimer.dataset.running;
+  cambiarColorTemporizador(false);
 }
 
 function setAudioStatus(message) {
   if (elAudioStatus) elAudioStatus.textContent = message;
 }
 
-function calcularDesfaseServidor(estado, requestStartedAt, responseReceivedAt) {
-  const serverNow = Date.parse(estado && estado.serverNow);
-  return Number.isFinite(serverNow)
-    ? serverNow - (requestStartedAt + responseReceivedAt) / 2
-    : 0;
+function cambiarColorTemporizador(temporizadorCuentaRegresiva) {
+  if (!elTimer) return;
+  if (temporizadorCuentaRegresiva) {
+    elTimer.style.color = '#ef4444';
+    elTimer.style.textShadow = '0 15px 35px rgba(239, 68, 68, 0.55)';
+  } else {
+    elTimer.style.removeProperty('color');
+    elTimer.style.removeProperty('text-shadow');
+  }
 }
 
 /**
@@ -417,7 +658,7 @@ function renderClasificados(estado) {
   if (clasificados.length === 0) {
     elClasificadosGrid.innerHTML = `
       <div class="col-span-full text-center py-8 bg-slate-900/60 rounded-xl border border-slate-800 text-slate-300">
-        <p class="text-xl">Calculando resultados de la ronda...</p>
+        <p class="text-xl">${estado.rondaCerrada ? 'No hay participantes clasificados en esta ronda.' : 'Calculando resultados de la ronda...'}</p>
       </div>
     `;
     return;

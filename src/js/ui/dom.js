@@ -13,8 +13,6 @@ export const DOM = {
     this.elements = {
       selectRonda: document.getElementById('select-ronda'),
       audicionNumero: document.getElementById('audicion-numero'),
-      audioPlayer: document.getElementById('audio-player'),
-      timerDisplay: document.getElementById('timer-display'),
       btnPlay: document.getElementById('btn-play'),
       listaAlumnos: document.getElementById('lista-alumnos'),
       btnGuardarAciertos: document.getElementById('btn-guardar-aciertos'),

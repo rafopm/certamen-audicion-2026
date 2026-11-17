@@ -5,10 +5,10 @@
 import { DOM } from './dom.js';
 import { appState } from '../core/state.js';
 import { api } from '../services/api.js';
-import { CONFIG } from '../config.js';
+import { CONFIG, getRoundOptionLabel } from '../config.js';
 import { getResponsesForAudition, isAuditionSaved } from '../core/rules.js';
-import { renderAlumnos, renderAudiciones, renderRanking, renderTimer } from './render.js';
-import { isValidRonda, extractDriveId, isValidFileId, normalizeAnswer } from '../utils/validators.js';
+import { renderAlumnos, renderAudiciones, renderRanking } from './render.js';
+import { isValidRonda, extractFileId, isValidFileId, normalizeAnswer } from '../utils/validators.js';
 
 let isPlaying = false;
 let isRequestingPlayback = false;
@@ -18,14 +18,13 @@ let currentPlayingAudData = null;
 let currentPlaybackInfo = { startSec: 0, endSec: 40, duration: 40 };
 let projectorCommandId = null;
 let projectorPollTimeout = null;
-let projectorStartTimeout = null;
 let projectorPlaybackStarted = false;
+let projectorStopPending = false;
 
 /**
  * Configura todos los event listeners de la aplicación
- * @param {import('../components/audio-player.js').AudioPlayer} player
  */
-export function setupEventListeners(player) {
+export function setupEventListeners() {
   DOM.init();
   currentAudicionIndex = appState.get().audicionActual || 1;
 
@@ -34,8 +33,7 @@ export function setupEventListeners(player) {
   if (btnPlay) {
     btnPlay.addEventListener('click', async () => {
       if (isPlaying) {
-        cancelarReproduccionProyector(player);
-        resetPlayButtonState();
+        cancelarReproduccionProyector();
         return;
       }
       if (isRequestingPlayback) return;
@@ -73,9 +71,9 @@ export function setupEventListeners(player) {
         return;
       }
       currentPlayingAudData = audicionActualData;
-      const cleanDriveId = extractDriveId(audicionActualData.driveId || audicionActualData.archivoDriveId);
-      if (!isValidFileId(cleanDriveId)) {
-        DOM.showToast('La canción asignada no tiene un archivo de audio válido en Google Drive.', 'error', 4500);
+      const cleanFileId = extractFileId(audicionActualData.driveId || audicionActualData.archivoDriveId);
+      if (!isValidFileId(cleanFileId)) {
+        DOM.showToast('La canción asignada no tiene un identificador de archivo válido.', 'error', 4500);
         isRequestingPlayback = false;
         resetPlayButtonState();
         return;
@@ -92,7 +90,7 @@ export function setupEventListeners(player) {
           commandId,
           ronda,
           audicionNum: currentAudicionIndex,
-          fileId: cleanDriveId,
+          fileId: cleanFileId,
           randomStart: isRandomStart
         });
         if (response.data && response.data.status !== 'loading') {
@@ -102,7 +100,7 @@ export function setupEventListeners(player) {
         isPlaying = true;
         setPlayButtonActive(true);
         setProjectorStatus(`⏳ Enviando audición ${currentAudicionIndex} al proyector...`);
-        pollProjectorPlayback(commandId, player);
+        pollProjectorPlayback(commandId);
       } catch (error) {
         if (projectorCommandId) {
           try {
@@ -112,7 +110,7 @@ export function setupEventListeners(player) {
               isPlaying = true;
               setPlayButtonActive(true);
               setProjectorStatus('✅ La orden fue recibida; sincronizando con el proyector...');
-              pollProjectorPlayback(projectorCommandId, player);
+              pollProjectorPlayback(projectorCommandId);
               return;
             }
           } catch (reconcileError) {
@@ -130,29 +128,6 @@ export function setupEventListeners(player) {
         setPlayButtonLoading(false);
       }
     });
-  }
-
-  // Hook al terminar la reproducción en AudioPlayer
-  const originalOnComplete = player.onComplete;
-  player.onComplete = () => {
-    if (projectorPlaybackStarted) {
-      finalizarYRegistrarReproduccion(player, true);
-      resetPlayButtonState();
-      DOM.showToast(`Audición ${currentAudicionIndex} finalizada. Verifica y guarda las respuestas.`, 'info', 3000);
-      updateAuditionControls();
-    }
-    if (originalOnComplete) originalOnComplete();
-  };
-
-  // Hook del timer para renderizado visual sincronizado
-  if (player.timer) {
-    const origTick = player.timer.onTick;
-    player.timer.onTick = (timeLeft) => {
-      const state = appState.get();
-      const configRonda = CONFIG.ROUNDS[state.rondaActual] || { duracion: 40 };
-      renderTimer(timeLeft, configRonda.duracion);
-      if (origTick) origTick(timeLeft);
-    };
   }
 
   // 2. NAVEGACIÓN MANUAL DE AUDICIÓN (ANTERIOR / SIGUIENTE)
@@ -200,12 +175,27 @@ export function setupEventListeners(player) {
   Object.entries(modoBotones).forEach(([modo, btn]) => {
     if (btn) {
       btn.addEventListener('click', async () => {
-        actualizarEstiloBotonesProyector(modo, modoBotones);
-        DOM.showToast(`Proyector configurado en: ${modo}`, 'info', 2000);
+        const state = appState.get();
+        const todasLasRondasCompletadas = Array.from(
+          { length: CONFIG.TOTAL_RONDAS },
+          (_, index) => CONFIG.COMPLETED_ROUNDS[index + 1]
+        ).every(Boolean);
+        if (modo === 'CLASIFICADOS' && !state.rondaCerrada) {
+          DOM.showToast('Finaliza la ronda actual antes de mostrar los clasificados.', 'warning');
+          return;
+        }
+        if (modo === 'RANKING_FINAL' && !todasLasRondasCompletadas) {
+          DOM.showToast('Finaliza todas las rondas antes de mostrar el ranking final.', 'warning');
+          return;
+        }
+
         try {
           await api.actualizarModoProyector(modo);
-        } catch (e) {
-          console.warn('Error al sincronizar modo proyector:', e);
+          actualizarEstiloBotonesProyector(modo, modoBotones);
+          DOM.showToast(`Proyector configurado en: ${modo}`, 'info', 2000);
+        } catch (err) {
+          console.error('Error al sincronizar modo proyector:', err);
+          DOM.showToast('No se pudo cambiar el modo del proyector: ' + err.message, 'error');
         }
       });
     }
@@ -238,6 +228,7 @@ export function setupEventListeners(player) {
         currentAudicionIndex = 1;
 
         await api.actualizarRondaActual(nuevaRonda);
+        actualizarEstiloBotonesProyector('AUDICION', modoBotones);
 
         const [audRes, resRes, alRes, respuestasRes, estadoRes] = await Promise.all([
           api.getAudicionesRonda(nuevaRonda),
@@ -261,7 +252,6 @@ export function setupEventListeners(player) {
         renderAlumnos(appState.get());
 
         const configRonda = CONFIG.ROUNDS[nuevaRonda] || { duracion: 40 };
-        renderTimer(configRonda.duracion, configRonda.duracion);
         actualizarBadgeRangoUI(0, configRonda.duracion);
         updateAuditionControls();
         DOM.showToast(`Secuencia: Ronda ${nuevaRonda} activada`, 'success');
@@ -419,7 +409,8 @@ export function setupEventListeners(player) {
         `¿Desea FINALIZAR la Ronda ${ronda}?\n\n` +
         `• Mínimo exigido: ${configRonda.minimoPasar} aciertos\n` +
         `• Los alumnos con menos de ${configRonda.minimoPasar} aciertos quedarán marcados como ELIMINADOS EN RONDA ${ronda}.\n` +
-        `• El proyector pasará automáticamente al modo CLASIFICADOS.\n\n` +
+        `• La ronda quedará marcada como completada y no se avanzará automáticamente.\n` +
+        `• El proyector pasará al modo CLASIFICADOS.\n\n` +
         `¿Continuar?`
       );
 
@@ -431,7 +422,7 @@ export function setupEventListeners(player) {
         const data = result.data || {};
 
         DOM.showToast(
-          `Ronda ${ronda} Finalizada: ${data.pasanCount || 0} clasifican, ${data.eliminadosCount || 0} eliminados`,
+          `Ronda ${ronda} completada: ${data.pasanCount || 0} clasifican, ${data.eliminadosCount || 0} eliminados`,
           'success',
           5000
         );
@@ -448,8 +439,15 @@ export function setupEventListeners(player) {
           alumnos: alNuevos.data || [],
           rondaCerrada: true
         });
+        CONFIG.COMPLETED_ROUNDS[ronda] = true;
+        const selectRonda = DOM.get('selectRonda');
+        if (selectRonda) {
+          const option = selectRonda.querySelector(`option[value="${ronda}"]`);
+          if (option) option.textContent = getRoundOptionLabel(ronda);
+        }
 
         renderAlumnos(appState.get());
+        updateAuditionControls();
 
         actualizarEstiloBotonesProyector(ronda === CONFIG.TOTAL_RONDAS ? 'RANKING_FINAL' : 'CLASIFICADOS', modoBotones);
 
@@ -458,13 +456,6 @@ export function setupEventListeners(player) {
           renderRanking(rankNuevos.data || []);
         }
 
-        if (data.siguienteRonda && data.siguienteRonda !== ronda && data.siguienteRonda <= CONFIG.TOTAL_RONDAS) {
-          const select = DOM.get('selectRonda');
-          if (select) {
-            select.value = String(data.siguienteRonda);
-            select.dispatchEvent(new Event('change'));
-          }
-        }
       } catch (err) {
         console.error('Error al finalizar ronda:', err);
         DOM.showToast('Error al finalizar ronda: ' + err.message, 'error');
@@ -491,6 +482,12 @@ export function setupEventListeners(player) {
       DOM.showLoading(`Reseteando datos de la Ronda ${ronda}...`);
       try {
         await api.resetRonda(ronda);
+        for (let rondaReiniciada = ronda; rondaReiniciada <= CONFIG.TOTAL_RONDAS; rondaReiniciada++) {
+          CONFIG.COMPLETED_ROUNDS[rondaReiniciada] = false;
+          const selectRonda = DOM.get('selectRonda');
+          const option = selectRonda && selectRonda.querySelector(`option[value="${rondaReiniciada}"]`);
+          if (option) option.textContent = getRoundOptionLabel(rondaReiniciada);
+        }
 
         const [resNuevos, alNuevos, respuestasNuevas] = await Promise.all([
           api.getResultados(ronda),
@@ -504,6 +501,7 @@ export function setupEventListeners(player) {
           respuestasAudicion: respuestasNuevas.data || [],
           rondaCerrada: false
         });
+        actualizarEstiloBotonesProyector('AUDICION', modoBotones);
 
         renderAlumnos(appState.get());
         updateAuditionControls();
@@ -695,74 +693,48 @@ function setProjectorStatus(message) {
   if (status) status.textContent = message;
 }
 
-function pollProjectorPlayback(commandId, player) {
+function pollProjectorPlayback(commandId) {
   if (projectorCommandId !== commandId) return;
 
-  const requestStartedAt = Date.now();
   api.getReproduccionProyector().then(response => {
-    const responseReceivedAt = Date.now();
     const state = response.data;
     if (!state || String(state.commandId) !== commandId) return;
-    const serverNow = Date.parse(state.serverNow);
-    const serverOffsetMs = Number.isFinite(serverNow)
-      ? serverNow - (requestStartedAt + responseReceivedAt) / 2
-      : 0;
 
-    if (state.status === 'loading') {
+    if (state.stopRequested && ['loading', 'countdown', 'playing'].includes(state.status)) {
+      projectorStopPending = true;
+      setProjectorStatus('⏳ El proyector está deteniendo la audición...');
+    } else if (state.status === 'loading') {
       setProjectorStatus(`⏳ El proyector está cargando la audición ${state.audicionNum}...`);
     } else if (state.status === 'countdown') {
-      currentPlaybackInfo = {
-        startSec: Number(state.startSec) || 0,
-        endSec: Number(state.endSec) || Number(state.startSec) + Number(state.duration),
-        duration: Number(state.duration)
-      };
+      actualizarInfoReproduccionDesdeProyector(state);
       actualizarBadgeRangoUI(currentPlaybackInfo.startSec, currentPlaybackInfo.endSec);
       setProjectorStatus('✅ Archivo cargado en el proyector. Cuenta regresiva de 5 segundos...');
-      if (!projectorStartTimeout) {
-        const startAt = Date.parse(state.startAt);
-        if (!Number.isFinite(startAt)) {
-          setProjectorStatus('⚠️ El servidor devolvió una hora de inicio inválida.');
-          api.actualizarReproduccionProyector({
-            commandId,
-            status: 'error',
-            error: 'Hora de inicio inválida.'
-          }).catch(error => console.error('[PROYECTOR] No se pudo reportar el error:', error));
-          return;
-        }
-        const delay = Math.max(0, startAt - Date.now() - serverOffsetMs);
-        projectorStartTimeout = setTimeout(() => {
-          projectorStartTimeout = null;
-          if (projectorCommandId !== commandId || !isPlaying) return;
-          projectorPlaybackStarted = true;
-          playStartTime = new Date();
-          player.timer.start(Number(state.duration));
-          actualizarEstadoRegistroInicio();
-          setProjectorStatus('🔊 Audición reproduciéndose desde el proyector.');
-        }, delay);
-      }
     } else if (state.status === 'playing') {
+      actualizarInfoReproduccionDesdeProyector(state);
+      if (!projectorPlaybackStarted) {
+        projectorPlaybackStarted = true;
+        const startTime = Date.parse(state.startedAt);
+        playStartTime = Number.isFinite(startTime) ? new Date(startTime) : new Date();
+        actualizarEstadoRegistroInicio();
+      }
       setProjectorStatus('🔊 Audición reproduciéndose desde el proyector.');
     } else if (state.status === 'completed') {
-      if (projectorPlaybackStarted && playStartTime) {
-        player.timer.stop();
-        finalizarYRegistrarReproduccion(player, true);
-      }
-      finalizarEstadoRemoto(player);
+      finalizarYRegistrarReproduccion(true, state);
+      finalizarEstadoRemoto();
       DOM.showToast(`Audición ${currentAudicionIndex} finalizada. Verifica y guarda las respuestas.`, 'info', 3000);
       updateAuditionControls();
       return;
     } else if (state.status === 'error') {
-      if (projectorPlaybackStarted && playStartTime) {
-        player.timer.stop();
-        finalizarYRegistrarReproduccion(player, false);
-      }
-      finalizarEstadoRemoto(player);
+      finalizarYRegistrarReproduccion(false, state);
+      finalizarEstadoRemoto();
       setProjectorStatus(`⚠️ Error en el proyector: ${state.error || 'no se pudo reproducir el audio.'}`);
       DOM.showToast(`Error de reproducción en el proyector: ${state.error || 'audio no disponible.'}`, 'error', 5000);
       return;
     } else if (state.status === 'cancelled') {
-      finalizarEstadoRemoto(player);
+      finalizarYRegistrarReproduccion(false, state);
+      finalizarEstadoRemoto();
       setProjectorStatus('Audición detenida.');
+      updateAuditionControls();
       return;
     }
   }).catch(error => {
@@ -770,69 +742,84 @@ function pollProjectorPlayback(commandId, player) {
     setProjectorStatus('⚠️ Sin conexión con el proyector; intentando sincronizar...');
   }).finally(() => {
     if (projectorCommandId === commandId) {
-      projectorPollTimeout = setTimeout(() => pollProjectorPlayback(commandId, player), 1000);
+      projectorPollTimeout = setTimeout(() => pollProjectorPlayback(commandId), 500);
     }
   });
 }
 
-function cancelarReproduccionProyector(player) {
+function cancelarReproduccionProyector() {
   const commandId = projectorCommandId;
-  if (projectorPlaybackStarted && playStartTime) {
-    finalizarYRegistrarReproduccion(player, false);
+  if (!commandId || projectorStopPending) return;
+  projectorStopPending = true;
+  const btn = DOM.get('btnPlay');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Deteniendo en el proyector...';
   }
-  player.timer.stop();
-  if (projectorStartTimeout) clearTimeout(projectorStartTimeout);
-  if (projectorPollTimeout) clearTimeout(projectorPollTimeout);
-  projectorStartTimeout = null;
-  projectorPollTimeout = null;
-  projectorCommandId = null;
-  projectorPlaybackStarted = false;
-  playStartTime = null;
-  if (commandId) {
-    api.actualizarReproduccionProyector({ commandId, status: 'cancelled' })
-      .catch(error => console.error('[PROYECTOR] No se pudo detener la reproducción:', error));
-  }
-  setProjectorStatus('Audición detenida.');
+  setProjectorStatus('⏳ Enviando orden de detención al proyector...');
+  api.actualizarReproduccionProyector({ commandId, status: 'stopRequested' })
+    .catch(error => {
+      console.error('[PROYECTOR] No se pudo solicitar la detención:', error);
+      projectorStopPending = false;
+      setPlayButtonActive(true);
+      DOM.showToast('No se pudo detener la reproducción en el proyector.', 'error', 4500);
+    });
 }
 
-function finalizarEstadoRemoto(player) {
-  player.timer.stop();
-  if (projectorStartTimeout) clearTimeout(projectorStartTimeout);
+function finalizarEstadoRemoto() {
   if (projectorPollTimeout) clearTimeout(projectorPollTimeout);
-  projectorStartTimeout = null;
   projectorPollTimeout = null;
   projectorCommandId = null;
   projectorPlaybackStarted = false;
+  projectorStopPending = false;
   playStartTime = null;
   resetPlayButtonState();
 }
 
+function actualizarInfoReproduccionDesdeProyector(state) {
+  const parsedStart = Number(state.startSec);
+  const parsedEnd = Number(state.endSec);
+  const parsedDuration = Number(state.playedDuration !== undefined ? state.playedDuration : state.duration);
+  const startSec = Number.isFinite(parsedStart) ? parsedStart : currentPlaybackInfo.startSec;
+  const duration = Number.isFinite(parsedDuration) ? parsedDuration : currentPlaybackInfo.duration;
+  currentPlaybackInfo = {
+    startSec,
+    endSec: Number.isFinite(parsedEnd) ? parsedEnd : startSec + duration,
+    duration
+  };
+}
+
 /**
- * Registra en Google Sheets la auditoría exacta de la audición reproducida con su rango real de segundos
+ * Registra en la base de datos la auditoría exacta de la audición reproducida.
  */
-function finalizarYRegistrarReproduccion(player, completada) {
+function finalizarYRegistrarReproduccion(completada, estadoProyector) {
+  if (estadoProyector && estadoProyector.startedAt && !playStartTime) {
+    const startedAt = Date.parse(estadoProyector.startedAt);
+    if (Number.isFinite(startedAt)) playStartTime = new Date(startedAt);
+  }
+  if (!playStartTime && estadoProyector) {
+    const playedDuration = Number(estadoProyector.playedDuration);
+    const completedAt = Date.parse(estadoProyector.completedAt || '');
+    if (Number.isFinite(playedDuration) && playedDuration > 0 && Number.isFinite(completedAt)) {
+      playStartTime = new Date(completedAt - playedDuration * 1000);
+    }
+  }
   if (!playStartTime || !currentPlayingAudData) return;
 
   const state = appState.get();
   const ronda = state.rondaActual || 1;
   const configRonda = CONFIG.ROUNDS[ronda] || { duracion: 40 };
 
-  const segIni = (currentPlaybackInfo && currentPlaybackInfo.startSec !== undefined)
-    ? currentPlaybackInfo.startSec
-    : 0;
-
-  let segFin = (currentPlaybackInfo && currentPlaybackInfo.endSec !== undefined)
-    ? currentPlaybackInfo.endSec
-    : (segIni + configRonda.duracion);
-
-  if (!completada && player.timer && player.timer.timeLeft !== undefined) {
-    const elapsed = configRonda.duracion - player.timer.timeLeft;
-    segFin = segIni + Math.max(1, elapsed);
-  }
-
-  const duracionReal = Math.max(1, segFin - segIni);
+  actualizarInfoReproduccionDesdeProyector(estadoProyector || {});
+  const segIni = currentPlaybackInfo.startSec;
+  const segFin = Number.isFinite(Number(currentPlaybackInfo.endSec))
+    ? Number(currentPlaybackInfo.endSec)
+    : segIni + (completada ? configRonda.duracion : 0);
+  const duracionReal = Math.max(0, segFin - segIni);
   const logStatusEl = document.getElementById('admin-log-message');
-  if (logStatusEl) logStatusEl.textContent = '⏳ Audición finalizada. Guardando registro en Google Sheets...';
+  const range = document.getElementById('admin-log-range');
+  if (range) range.textContent = `de ${segIni}s a ${segFin}s`;
+  if (logStatusEl) logStatusEl.textContent = '⏳ Audición finalizada. Guardando registro en la base de datos...';
 
   api.registrarReproduccion({
     ronda: ronda,
@@ -844,13 +831,13 @@ function finalizarYRegistrarReproduccion(player, completada) {
     segundoFin: segFin,
     duracion: duracionReal
   }).then(res => {
-    console.log('[AUDITORIA] Registrado en Google Sheets:', res.data);
+    console.log('[AUDITORIA] Registrado en la base de datos:', res.data);
     if (logStatusEl && res.data) {
-      logStatusEl.textContent = `✅ Registrado en Google Sheets: de ${segIni}s a ${segFin}s (${duracionReal}s) a las ${res.data.fechaHora.split(' ')[1]}`;
+      logStatusEl.textContent = `✅ Registrado en la base de datos: de ${segIni}s a ${segFin}s (${duracionReal}s) a las ${res.data.fechaHora.split(' ')[1]}`;
     }
   }).catch(err => {
     console.warn('[AUDITORIA ERROR]', err);
-    if (logStatusEl) logStatusEl.textContent = '⚠️ No se pudo guardar el registro de reproducción en Google Sheets.';
+    if (logStatusEl) logStatusEl.textContent = '⚠️ No se pudo guardar el registro de reproducción en la base de datos.';
   });
 
   playStartTime = null;
@@ -869,10 +856,12 @@ function actualizarEstadoRegistroInicio() {
     second: '2-digit'
   }).format(playStartTime || new Date());
   const cancion = currentPlayingAudData.cancionNombre || `Composición #${currentPlayingAudData.cancionId}`;
+  const range = document.getElementById('admin-log-range');
+  if (range) range.textContent = `de ${inicio}s a ${fin}s`;
 
   logStatusEl.textContent =
     `⏱ Reproducción iniciada: ${cancion} · Ronda ${state.rondaActual || 1}, audición ${currentAudicionIndex} · ` +
-    `de ${inicio}s a ${fin}s · ${hora}. Se guardará en Google Sheets al finalizar.`;
+    `de ${inicio}s a ${fin}s · ${hora}. Se guardará en la base de datos al finalizar.`;
 }
 
 function setPlayButtonLoading(loading) {

@@ -9,9 +9,9 @@
 import { DOM } from './dom.js';
 import { api } from '../services/api.js';
 import { appState } from '../core/state.js';
-import { CONFIG, getRoundConfigSuffix } from '../config.js';
+import { CONFIG, getRoundConfigSuffix, getRoundOptionLabel } from '../config.js';
 import { renderAlumnos, renderAudiciones } from './render.js';
-import { extractDriveId, sanitizeInput } from '../utils/validators.js';
+import { extractFileId, sanitizeInput } from '../utils/validators.js';
 
 let modalElement = null;
 let currentTab = 'rondas';
@@ -93,7 +93,7 @@ function crearModalHTML() {
 
       <!-- Footer del Modal -->
       <div class="bg-slate-950 p-3 md:p-4 border-t border-slate-800 flex justify-between items-center text-xs text-slate-400">
-        <span>💡 Todos los cambios se sincronizan en Google Sheets</span>
+        <span>💡 Todos los cambios se sincronizan con la base de datos</span>
         <button id="btn-cerrar-config-footer" class="bg-slate-800 hover:bg-slate-700 text-white font-bold px-5 py-2 rounded-xl transition cursor-pointer">
           Cerrar
         </button>
@@ -230,7 +230,7 @@ function renderTabSorteo(container) {
           </button>
           <button id="btn-guardar-sorteo" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 py-2.5 rounded-xl shadow-lg transition flex items-center space-x-2 cursor-pointer">
             <span>💾</span>
-            <span>Guardar Sorteo en Google Sheets</span>
+            <span>Guardar sorteo en la base de datos</span>
           </button>
         </div>
       </div>
@@ -300,7 +300,7 @@ function renderTabSorteo(container) {
     DOM.showToast('¡Nuevo sorteo aleatorio generado con éxito!', 'success', 2500);
   });
 
-  // Evento: Guardar Sorteo en Google Sheets
+  // Evento: guardar el sorteo en la base de datos
   container.querySelector('#btn-guardar-sorteo').addEventListener('click', async () => {
     if (audicionesSorteoTemp.length === 0) {
       DOM.showToast('Genera un sorteo antes de guardar', 'warning');
@@ -316,7 +316,7 @@ function renderTabSorteo(container) {
       return;
     }
 
-    DOM.showLoading('Guardando orden de audiciones en Google Sheets...');
+    DOM.showLoading('Guardando orden de audiciones en la base de datos...');
     try {
       const saveRes = await api.guardarAudicionesRonda(audicionesSorteoTemp, reiniciarResultados);
       const resetDone = Boolean(saveRes.data && saveRes.data.reinicioRealizado);
@@ -398,7 +398,7 @@ function renderTabCanciones(container) {
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <input type="text" id="add-cancion-nombre" placeholder="Nombre (ej: SANGRE VIENESA)" class="bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white uppercase focus:ring-1 focus:ring-yellow-400 focus:outline-none">
           <input type="text" id="add-cancion-codigo" placeholder="Código (ej: SV1200)" class="bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white uppercase font-mono focus:ring-1 focus:ring-yellow-400 focus:outline-none">
-          <input type="text" id="add-cancion-drive" placeholder="ID de Google Drive o enlace" class="bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white focus:ring-1 focus:ring-yellow-400 focus:outline-none">
+          <input type="text" id="add-cancion-drive" placeholder="ID de archivo o enlace" class="bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white focus:ring-1 focus:ring-yellow-400 focus:outline-none">
         </div>
         <div class="mt-2.5 flex justify-end">
           <button id="btn-add-cancion" class="bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold px-4 py-1.5 rounded-lg text-xs shadow transition cursor-pointer">
@@ -410,7 +410,7 @@ function renderTabCanciones(container) {
       <div class="flex justify-between items-center text-xs">
         <span class="text-slate-400">Total canciones en repertorio: <strong class="text-white">${cancionesTemp.length}</strong></span>
         <button id="btn-guardar-todas-canciones" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2 rounded-xl text-xs shadow transition cursor-pointer">
-          💾 Guardar Canciones en Google Sheets
+          💾 Guardar canciones en la base de datos
         </button>
       </div>
 
@@ -422,7 +422,7 @@ function renderTabCanciones(container) {
               <th class="p-2.5 text-center w-12">ID</th>
               <th class="p-2.5">Título de la Obra</th>
               <th class="p-2.5 text-center w-24">Código</th>
-              <th class="p-2.5">ID Google Drive</th>
+              <th class="p-2.5">ID de archivo</th>
               <th class="p-2.5 text-center w-16">Acción</th>
             </tr>
           </thead>
@@ -452,7 +452,7 @@ function renderTabCanciones(container) {
     const nombre = container.querySelector('#add-cancion-nombre').value.trim();
     const codigo = container.querySelector('#add-cancion-codigo').value.trim();
     const driveInput = container.querySelector('#add-cancion-drive').value.trim();
-    const cleanId = extractDriveId(driveInput);
+    const cleanId = extractFileId(driveInput);
 
     if (!nombre) {
       DOM.showToast('Ingresa el nombre de la obra', 'warning');
@@ -483,9 +483,9 @@ function renderTabCanciones(container) {
     });
   });
 
-  // Evento: Guardar Canciones en Google Sheets
+  // Evento: guardar canciones en la base de datos
   container.querySelector('#btn-guardar-todas-canciones').addEventListener('click', async () => {
-    DOM.showLoading('Guardando lista de canciones en Google Sheets...');
+    DOM.showLoading('Guardando lista de canciones en la base de datos...');
     try {
       await api.guardarCanciones(cancionesTemp);
       appState.set({ canciones: cancionesTemp });
@@ -539,7 +539,7 @@ function renderTabParticipantes(container) {
       <div class="flex justify-between items-center text-xs">
         <span class="text-slate-400">Total participantes registrados: <strong class="text-white">${alumnosTemp.length}</strong></span>
         <button id="btn-guardar-alumnos-cloud" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2 rounded-xl text-xs shadow transition cursor-pointer">
-          💾 Guardar Alumnos en Google Sheets
+          💾 Guardar participantes en la base de datos
         </button>
       </div>
 
@@ -638,9 +638,9 @@ function renderTabParticipantes(container) {
     });
   });
 
-  // Evento: Guardar Alumnos en Google Sheets
+  // Evento: guardar participantes en la base de datos
   container.querySelector('#btn-guardar-alumnos-cloud').addEventListener('click', async () => {
-    DOM.showLoading('Guardando participantes en Google Sheets...');
+    DOM.showLoading('Guardando participantes en la base de datos...');
     try {
       await api.guardarAlumnosLote(alumnosTemp, true);
       appState.set({ alumnos: alumnosTemp });
@@ -696,7 +696,7 @@ function renderTabRondas(container) {
       <!-- Configuración dinámica de rondas -->
       <div class="bg-blue-950/60 border border-blue-800 p-4 rounded-xl">
         <h3 class="font-bold text-sm text-yellow-300 mb-2">⏱ Parámetros por ronda</h3>
-        <p class="text-xs text-slate-400 mb-3">El mínimo de clasificación se configura por ronda. Los valores actuales se conservan como predeterminados.</p>
+        <p class="text-xs text-slate-400 mb-3">Configura los puntos por cada acierto y el bonus único al alcanzar el mínimo para clasificar (en la final, para ganar).</p>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
           ${rondas.map(r => {
@@ -704,11 +704,15 @@ function renderTabRondas(container) {
             const defaults = CONFIG.ROUNDS[r] || {
               duracion: Math.max(2, Math.round(40 / Math.pow(2, r - 1))),
               audiciones: r <= 2 ? 4 : 3,
-              minimoPasar: r === totalRondas ? 3 : 2
+              minimoPasar: r === totalRondas ? 3 : 2,
+              puntosPorAcierto: 1,
+              bonusClasificar: 0
             };
             const dur = Number(cfg[`DURACION_RONDA_${suffix}`] ?? cfg[`DURACION_RONDA_${r}`] ?? defaults.duracion);
             const aud = Number(cfg[`NUM_AUDICIONES_RONDA_${suffix}`] ?? cfg[`NUM_AUDICIONES_RONDA_${r}`] ?? defaults.audiciones);
             const min = Number(cfg[`MINIMO_PASAR_RONDA_${suffix}`] ?? cfg[`MINIMO_PASAR_RONDA_${r}`] ?? defaults.minimoPasar);
+            const puntos = Number(cfg[`PUNTOS_POR_ACIERTO_RONDA_${suffix}`] ?? cfg[`PUNTOS_POR_ACIERTO_RONDA_${r}`] ?? defaults.puntosPorAcierto);
+            const bonus = Number(cfg[`BONUS_POR_CLASIFICAR_RONDA_${suffix}`] ?? cfg[`BONUS_POR_CLASIFICAR_RONDA_${r}`] ?? defaults.bonusClasificar);
 
             return `
               <div class="bg-slate-900/90 border border-slate-700 p-3 rounded-xl space-y-2">
@@ -726,6 +730,14 @@ function renderTabRondas(container) {
                 <div>
                   <label class="text-[10px] text-slate-400 block">Mínimo clasificar:</label>
                   <input type="number" id="cfg-min-${r}" min="1" max="${aud}" step="1" value="${min}" class="w-full bg-slate-950 border border-slate-700 rounded p-1 text-center font-bold text-yellow-300">
+                </div>
+                <div>
+                  <label class="text-[10px] text-slate-400 block">Puntos por acierto:</label>
+                  <input type="number" id="cfg-puntos-${r}" min="0" max="10000" step="1" value="${puntos}" class="w-full bg-slate-950 border border-slate-700 rounded p-1 text-center font-bold text-emerald-300">
+                </div>
+                <div>
+                  <label class="text-[10px] text-slate-400 block">Bonus al clasificar:</label>
+                  <input type="number" id="cfg-bonus-${r}" min="0" max="10000" step="1" value="${bonus}" class="w-full bg-slate-950 border border-slate-700 rounded p-1 text-center font-bold text-emerald-300">
                 </div>
               </div>
             `;
@@ -775,7 +787,7 @@ function renderTabRondas(container) {
     renderTabRondas(container);
   });
 
-  // Evento: Guardar Configuración en Google Sheets
+  // Evento: guardar configuración en la base de datos
   container.querySelector('#btn-guardar-reglas-cloud').addEventListener('click', async () => {
     const total = Number(container.querySelector('#cfg-total-rondas').value);
     if (!Number.isInteger(total) || total < 1 || total > 20) {
@@ -802,11 +814,15 @@ function renderTabRondas(container) {
       const duration = Number(container.querySelector(`#cfg-dur-${r}`).value);
       const auditions = Number(container.querySelector(`#cfg-aud-${r}`).value);
       const minimum = Number(container.querySelector(`#cfg-min-${r}`).value);
+      const pointsPerCorrect = Number(container.querySelector(`#cfg-puntos-${r}`).value);
+      const bonus = Number(container.querySelector(`#cfg-bonus-${r}`).value);
 
       if (!Number.isInteger(duration) || duration < 1 || duration > 3600 ||
           !Number.isInteger(auditions) || auditions < 1 || auditions > 100 ||
-          !Number.isInteger(minimum) || minimum < 1 || minimum > auditions) {
-        DOM.showToast(`Revisa los valores de la Ronda ${r}: duración 1–3600, audiciones 1–100 y mínimo 1–audiciones.`, 'warning', 5000);
+          !Number.isInteger(minimum) || minimum < 1 || minimum > auditions ||
+          !Number.isInteger(pointsPerCorrect) || pointsPerCorrect < 0 || pointsPerCorrect > 10000 ||
+          !Number.isInteger(bonus) || bonus < 0 || bonus > 10000) {
+        DOM.showToast(`Revisa los valores de la Ronda ${r}: duración 1–3600, audiciones 1–100, mínimo 1–audiciones y puntos/bonus 0–10000.`, 'warning', 5000);
         return;
       }
 
@@ -814,43 +830,56 @@ function renderTabRondas(container) {
       paramsUpdate[`DURACION_RONDA_${suffix}`] = duration;
       paramsUpdate[`NUM_AUDICIONES_RONDA_${suffix}`] = auditions;
       paramsUpdate[`MINIMO_PASAR_RONDA_${suffix}`] = minimum;
+      paramsUpdate[`PUNTOS_POR_ACIERTO_RONDA_${suffix}`] = pointsPerCorrect;
+      paramsUpdate[`BONUS_POR_CLASIFICAR_RONDA_${suffix}`] = bonus;
     }
 
-    const rulesChanged = total !== CONFIG.TOTAL_RONDAS ||
+    const roundRulesChanged = total !== CONFIG.TOTAL_RONDAS ||
       Object.entries(paramsUpdate).some(([key, value]) =>
         /^(DURACION_RONDA_|NUM_AUDICIONES_RONDA_|MINIMO_PASAR_RONDA_)/.test(key) &&
         String(configTemp[key] === undefined ? '' : configTemp[key]) !== String(value)
       );
+    const scoringRulesChanged = Object.entries(paramsUpdate).some(([key, value]) =>
+      /^(PUNTOS_POR_ACIERTO_RONDA_|BONUS_POR_CLASIFICAR_RONDA_)/.test(key) &&
+        String(configTemp[key] === undefined
+          ? (key.indexOf('PUNTOS_POR_ACIERTO_') === 0 ? 1 : 0)
+          : configTemp[key]) !== String(value)
+    );
+    const rulesChanged = roundRulesChanged || scoringRulesChanged;
     const hasActivity = resultadosTemp.length > 0 || respuestasTemp.length > 0;
     const reiniciarResultados = rulesChanged && hasActivity;
     if (reiniciarResultados && !window.confirm(
-      'Cambiar las reglas reiniciará el sorteo, las respuestas y los resultados guardados de todas las rondas. ¿Continuar?'
+      'Cambiar las reglas o los puntajes reiniciará las respuestas y los resultados guardados de todas las rondas. Si cambias la cantidad o los parámetros de las audiciones, también se reiniciará el sorteo. ¿Continuar?'
     )) {
       return;
     }
 
-    DOM.showLoading('Actualizando parámetros en Google Sheets...');
+    DOM.showLoading('Actualizando parámetros en la base de datos...');
     try {
       await api.guardarConfigLote(paramsUpdate, reiniciarResultados);
       configTemp = { ...configTemp, ...paramsUpdate };
       CONFIG.syncFromBackend(configTemp);
-      if (rulesChanged) {
+      if (roundRulesChanged) {
         audicionesSorteoTemp = [];
         audicionesGuardadasTemp = [];
       }
       if (reiniciarResultados) {
         respuestasTemp = [];
         resultadosTemp = [];
+        for (let r = 1; r <= CONFIG.TOTAL_RONDAS; r++) {
+          configTemp[`RONDA_CERRADA_${r}`] = false;
+          CONFIG.COMPLETED_ROUNDS[r] = false;
+        }
       }
       const state = appState.get();
       const currentRound = Number(state.rondaActual) || 1;
       const nextRound = reiniciarResultados || currentRound > total ? 1 : currentRound;
-      if (rulesChanged) {
+      if (roundRulesChanged || reiniciarResultados) {
         appState.set({
           rondaActual: nextRound,
           rondaCerrada: false,
           audicionActual: 1,
-          audicionesRonda: [],
+          audicionesRonda: roundRulesChanged ? [] : state.audicionesRonda,
           resultados: reiniciarResultados
             ? []
             : (state.resultados || []).filter(resultado => Number(resultado.ronda) === nextRound),
@@ -876,10 +905,14 @@ function guardarValoresFormularioRondas(container, totalRondas) {
     const duration = container.querySelector(`#cfg-dur-${r}`);
     const auditions = container.querySelector(`#cfg-aud-${r}`);
     const minimum = container.querySelector(`#cfg-min-${r}`);
+    const points = container.querySelector(`#cfg-puntos-${r}`);
+    const bonus = container.querySelector(`#cfg-bonus-${r}`);
     const suffix = getRoundConfigSuffix(r, totalRondas);
     if (duration) configTemp[`DURACION_RONDA_${suffix}`] = Number(duration.value);
     if (auditions) configTemp[`NUM_AUDICIONES_RONDA_${suffix}`] = Number(auditions.value);
     if (minimum) configTemp[`MINIMO_PASAR_RONDA_${suffix}`] = Number(minimum.value);
+    if (points) configTemp[`PUNTOS_POR_ACIERTO_RONDA_${suffix}`] = Number(points.value);
+    if (bonus) configTemp[`BONUS_POR_CLASIFICAR_RONDA_${suffix}`] = Number(bonus.value);
   }
 }
 
@@ -888,7 +921,7 @@ function actualizarSelectorRondas() {
   if (!select) return;
   const currentRound = Number(select.value);
   select.innerHTML = Object.entries(CONFIG.ROUNDS).map(([round, config]) =>
-    `<option value="${round}">${sanitizeInput(config.nombre)} - ${config.audiciones} audiciones de ${config.duracion}s (mínimo: ${config.minimoPasar})</option>`
+    `<option value="${round}">${sanitizeInput(getRoundOptionLabel(round, config))}</option>`
   ).join('');
   select.value = String(currentRound <= CONFIG.TOTAL_RONDAS ? currentRound : 1);
 }
