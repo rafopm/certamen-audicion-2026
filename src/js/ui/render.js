@@ -1,13 +1,82 @@
 /**
  * Módulo de renderizado de UI para el Certamen de Audición Musical 2026.
+ *
+ * Regla de la ronda final:
+ *   Todo participante que alcanza la última ronda del certamen es FINALISTA.
+ *   En esa ronda nunca se muestra "Eliminado en Ronda N" ni "Clasificado (x/y)":
+ *   se muestra "🏆 Finalista" (con su puntaje si sigue en competencia).
  */
+
 import { DOM } from './dom.js';
 import { formatNombre, formatRanking, formatTiempo, formatPuntos } from '../utils/formatters.js';
 import { sanitizeInput } from '../utils/validators.js';
 import { CONFIG } from '../config.js';
 
+/* ==========================================================================
+   Paleta de estados (clases literales para que Tailwind las detecte)
+   ========================================================================== */
+const BADGE = {
+  finalista: 'bg-amber-900/70 text-amber-200 border border-amber-500',
+  finalistaPuntaje: 'bg-emerald-900/80 text-emerald-200 border border-emerald-500',
+  finalistaEnCurso: 'bg-amber-950/80 text-amber-200 border border-amber-600/70',
+  eliminado: 'bg-rose-950 text-rose-300 border border-rose-800',
+  eliminadoRonda: 'bg-red-900/80 text-red-200 border border-red-500',
+  clasificado: 'bg-emerald-900/80 text-emerald-200 border border-emerald-500',
+  enCompetencia: 'bg-blue-900/60 text-blue-200 border border-blue-400/30',
+  activo: 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+};
+
+const GRID_COLS = {
+  1: 'grid-cols-1',
+  2: 'grid-cols-2',
+  3: 'grid-cols-3',
+  4: 'grid-cols-4'
+};
+
+/* ==========================================================================
+   Helpers de estado del certamen
+   ========================================================================== */
+
+/** Normaliza booleanos que pueden llegar como string desde el backend. */
+function esVerdadero(valor) {
+  return valor === true || String(valor).toLowerCase() === 'true';
+}
+
+/** Total de rondas del certamen, con respaldo si CONFIG.TOTAL_RONDAS falta. */
+function getTotalRondas() {
+  const declarado = Number(CONFIG && CONFIG.TOTAL_RONDAS);
+  if (Number.isInteger(declarado) && declarado > 0) return declarado;
+
+  const rondas = Object.keys((CONFIG && CONFIG.ROUNDS) || {})
+    .map(Number)
+    .filter(n => Number.isInteger(n) && n > 0);
+
+  return rondas.length ? Math.max(...rondas) : 1;
+}
+
+/** ¿La ronda indicada es la última del certamen? */
+function esRondaFinal(ronda) {
+  const numero = Number(ronda);
+  return Number.isInteger(numero) && numero > 0 && numero === getTotalRondas();
+}
+
 /**
- * Renderiza la lista de alumnos con soporte para checkboxes de acierto y validación de pizarras.
+ * Un participante es finalista si alcanzó la última ronda:
+ * sigue compitiendo en ella o cerró su participación allí.
+ */
+function esFinalista(item) {
+  if (!item) return false;
+  if (esVerdadero(item.eliminado) && esRondaFinal(item.rondaEliminacion)) return true;
+  return esRondaFinal(item.rondaMax);
+}
+
+/* ==========================================================================
+   Lista de alumnos (tarjetas del jurado)
+   ========================================================================== */
+
+/**
+ * Renderiza la lista de alumnos con soporte para checkboxes de acierto
+ * y validación de pizarras.
  */
 export function renderAlumnos(arg1, arg2) {
   let alumnos = [];
@@ -27,15 +96,19 @@ export function renderAlumnos(arg1, arg2) {
     rondaCerrada = Boolean(arg1.rondaCerrada);
     soloLectura = Boolean(arg1.soloLectura);
     audicionActualNum = arg1.audicionActual || 1;
+
     const configRonda = CONFIG.ROUNDS[rondaActual] || { audiciones: 4 };
     totalAudiciones = configRonda.audiciones;
   } else {
     alumnos = Array.isArray(arg1) ? arg1 : [];
     resultados = Array.isArray(arg2) ? arg2 : [];
+
     const select = DOM.get('selectRonda');
     if (select) rondaActual = parseInt(select.value, 10) || 1;
+
     const audEl = DOM.get('audicionNumero');
     if (audEl) audicionActualNum = parseInt(audEl.textContent, 10) || 1;
+
     const configRonda = CONFIG.ROUNDS[rondaActual] || { audiciones: 4 };
     totalAudiciones = configRonda.audiciones;
   }
@@ -43,18 +116,24 @@ export function renderAlumnos(arg1, arg2) {
   const container = DOM.get('listaAlumnos');
   if (!container) return;
 
+  const rondaFinal = esRondaFinal(rondaActual);
+  const totalRondas = getTotalRondas();
+
   // Mapear resultados de la ronda actual y eliminaciones previas
   const resMap = {};
   const eliminacionesMap = {};
 
   resultados.forEach(res => {
-    if (parseInt(res.ronda, 10) === rondaActual) {
-      resMap[String(res.alumnoId)] = res;
+    const alumnoId = String(res.alumnoId);
+
+    if (parseInt(res.ronda, 10) === Number(rondaActual)) {
+      resMap[alumnoId] = res;
     }
-    if (res.eliminado) {
-      const rElim = res.rondaEliminacion || res.ronda;
-      if (!eliminacionesMap[String(res.alumnoId)] || rElim < eliminacionesMap[String(res.alumnoId)]) {
-        eliminacionesMap[String(res.alumnoId)] = rElim;
+
+    if (esVerdadero(res.eliminado)) {
+      const rElim = Number(res.rondaEliminacion || res.ronda);
+      if (Number.isFinite(rElim) && (!eliminacionesMap[alumnoId] || rElim < eliminacionesMap[alumnoId])) {
+        eliminacionesMap[alumnoId] = rElim;
       }
     }
   });
@@ -62,58 +141,86 @@ export function renderAlumnos(arg1, arg2) {
   alumnos = alumnos.filter(alumno => {
     const rawRound = alumno.rondaEliminacion || eliminacionesMap[String(alumno.id)];
     const eliminationRound = Number(rawRound);
-    return !Number.isInteger(eliminationRound) || eliminationRound >= rondaActual;
+    return !Number.isInteger(eliminationRound) || eliminationRound >= Number(rondaActual);
   });
 
   if (alumnos.length === 0) {
+    const mensajeVacio = rondaFinal
+      ? 'No hay finalistas registrados en la ronda final.'
+      : 'No hay participantes que hayan clasificado a esta ronda.';
+
     container.innerHTML = `
       <div class="col-span-full text-center py-8 text-blue-200">
-        <p class="text-lg">No hay participantes que hayan clasificado a esta ronda.</p>
+        <p class="text-lg">${mensajeVacio}</p>
       </div>
     `;
     return;
   }
 
   const configRonda = CONFIG.ROUNDS[rondaActual] || { minimoPasar: 2 };
-  const minPasar = configRonda.minimoPasar;
+  const minPasar = configRonda.minimoPasar ?? 2;
   const respuestasRonda = respuestasAudicion.filter(response => Number(response.ronda) === Number(rondaActual));
+  const gridColsClass = GRID_COLS[Math.min(Math.max(Number(totalAudiciones) || 1, 1), 4)] || 'grid-cols-4';
 
   container.innerHTML = alumnos.map(alumno => {
     const res = resMap[String(alumno.id)];
     const respuestasAlumno = respuestasRonda.filter(response => String(response.alumnoId) === String(alumno.id));
+
     const aciertosPrevios = respuestasAlumno.length > 0
-      ? respuestasAlumno.filter(response => response.correcto === true || String(response.correcto).toLowerCase() === 'true').length
-      : (res ? parseInt(res.aciertos, 10) : 0);
-    
+      ? respuestasAlumno.filter(response => esVerdadero(response.correcto)).length
+      : (res ? parseInt(res.aciertos, 10) || 0 : 0);
+
     // Determinar si fue eliminado en una ronda anterior o en esta ronda
     const rEliminacion = alumno.rondaEliminacion || eliminacionesMap[String(alumno.id)];
-    const eliminadoAnteriormente = rEliminacion && rEliminacion < rondaActual;
-    const eliminadoEstaRonda = res ? res.eliminado : false;
+    const eliminadoAnteriormente = Boolean(rEliminacion) && Number(rEliminacion) < Number(rondaActual);
+    const eliminadoEstaRonda = res ? esVerdadero(res.eliminado) : false;
     const eliminado = eliminadoAnteriormente || eliminadoEstaRonda;
+
+    // En la ronda final nadie figura como "eliminado": es finalista
+    const rondaEliminacionEfectiva = eliminadoAnteriormente ? rEliminacion : rondaActual;
+    const finalistaEliminado = eliminado && esRondaFinal(rondaEliminacionEfectiva);
 
     const nombreFormat = formatNombre(alumno.nombre);
 
     // Estado visual del alumno
-    let badgeClass = 'bg-blue-900/60 text-blue-200 border border-blue-400/30';
+    let badgeClass = BADGE.enCompetencia;
     let estadoTexto = 'En competencia';
+    let estadoTitle = `En competencia en la Ronda ${rondaActual}`;
 
-    if (eliminadoAnteriormente) {
-      badgeClass = 'bg-rose-950 text-rose-300 border border-rose-800';
+    if (finalistaEliminado) {
+      badgeClass = BADGE.finalista;
+      estadoTexto = '🏆 Finalista';
+      estadoTitle = `Finalista del certamen · cerró su participación en la ronda final (Ronda ${totalRondas})`;
+    } else if (eliminadoAnteriormente) {
+      badgeClass = BADGE.eliminado;
       estadoTexto = `❌ Eliminado en Ronda ${rEliminacion}`;
+      estadoTitle = `Eliminado en la Ronda ${rEliminacion}`;
     } else if (eliminadoEstaRonda) {
-      badgeClass = 'bg-red-900/80 text-red-200 border border-red-500';
+      badgeClass = BADGE.eliminadoRonda;
       estadoTexto = `Eliminado en Ronda ${rondaActual}`;
+      estadoTitle = `Eliminado en la Ronda ${rondaActual}`;
+    } else if (rondaFinal) {
+      if (aciertosPrevios >= minPasar) {
+        badgeClass = BADGE.finalistaPuntaje;
+        estadoTexto = `🏆 Finalista (${aciertosPrevios}/${totalAudiciones})`;
+        estadoTitle = `Finalista · puntaje en la ronda final: ${aciertosPrevios} de ${totalAudiciones}`;
+      } else {
+        badgeClass = BADGE.finalistaEnCurso;
+        estadoTexto = '🏆 Finalista · en competencia';
+        estadoTitle = `Finalista · disputando la ronda final (Ronda ${totalRondas})`;
+      }
     } else if (aciertosPrevios >= minPasar) {
-      badgeClass = 'bg-emerald-900/80 text-emerald-200 border border-emerald-500';
+      badgeClass = BADGE.clasificado;
       estadoTexto = `Clasificado (${aciertosPrevios}/${totalAudiciones})`;
+      estadoTitle = `Clasificado a la siguiente ronda con ${aciertosPrevios} aciertos`;
     }
 
     // Checkboxes para cada audición de la ronda
     let checkboxesHtml = '';
     for (let audNum = 1; audNum <= totalAudiciones; audNum++) {
       const audicionRespuesta = respuestasAlumno.find(response => Number(response.audicionNum) === audNum);
-      const isChecked = audicionRespuesta && (audicionRespuesta.correcto === true || String(audicionRespuesta.correcto).toLowerCase() === 'true');
-      const isAudicionActual = audNum === audicionActualNum;
+      const isChecked = audicionRespuesta && esVerdadero(audicionRespuesta.correcto);
+      const isAudicionActual = audNum === Number(audicionActualNum);
       const isDisabled = soloLectura || rondaCerrada || eliminadoAnteriormente || !isAudicionActual;
 
       checkboxesHtml += `
@@ -132,14 +239,17 @@ export function renderAlumnos(arg1, arg2) {
       `;
     }
 
+    const etiquetaAciertos = rondaFinal ? 'Aciertos Ronda Final:' : `Aciertos Ronda ${rondaActual}:`;
+    const respuestaPizarra = respuestasAlumno.find(response => Number(response.audicionNum) === Number(audicionActualNum));
+
     return `
-      <div class="alumno-card bg-slate-800/90 border border-slate-700 rounded-lg p-2.5 shadow transition hover:border-yellow-500/50 ${eliminadoAnteriormente ? 'opacity-40 bg-slate-950 cursor-not-allowed' : ''}" data-alumno-card="${sanitizeInput(alumno.id)}">
+      <div class="alumno-card bg-slate-800/90 border border-slate-700 rounded-lg p-2.5 shadow transition hover:border-yellow-500/50 ${rondaFinal ? 'ring-1 ring-amber-500/30' : ''} ${eliminadoAnteriormente ? 'opacity-40 bg-slate-950 cursor-not-allowed' : ''}" data-alumno-card="${sanitizeInput(alumno.id)}">
         <div class="flex items-start justify-between gap-2 mb-1.5">
           <div class="min-w-0">
             <h3 class="font-bold text-sm text-white truncate">${sanitizeInput(nombreFormat)}</h3>
             <p class="text-[10px] text-slate-300">${sanitizeInput(alumno.grado || '')} ${sanitizeInput(alumno.nivel || '')}</p>
           </div>
-          <span class="text-[9px] px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${badgeClass}">
+          <span class="text-[9px] px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${badgeClass}" title="${sanitizeInput(estadoTitle)}">
             ${estadoTexto}
           </span>
         </div>
@@ -147,10 +257,10 @@ export function renderAlumnos(arg1, arg2) {
         <!-- Checkboxes de audiciones -->
         <div class="mt-1.5">
           <div class="text-[10px] text-slate-400 mb-1 flex justify-between items-center">
-            <span>Aciertos Ronda ${rondaActual}:</span>
+            <span>${etiquetaAciertos}</span>
             <span class="font-bold text-yellow-400"><span id="aciertos-count-${alumno.id}">${aciertosPrevios}</span> / ${totalAudiciones}</span>
           </div>
-          <div class="grid grid-cols-${Math.min(totalAudiciones, 4)} gap-1">
+          <div class="grid ${gridColsClass} gap-1">
             ${checkboxesHtml}
           </div>
         </div>
@@ -166,7 +276,7 @@ export function renderAlumnos(arg1, arg2) {
               data-alumno-id="${sanitizeInput(alumno.id)}"
               data-audicion="${audicionActualNum}"
               ${soloLectura || rondaCerrada ? 'disabled' : ''}
-              value="${sanitizeInput(respuestasAlumno.find(response => Number(response.audicionNum) === audicionActualNum)?.respuesta || '')}"
+              value="${sanitizeInput(respuestaPizarra?.respuesta || '')}"
             />
           </div>
         ` : ''}
@@ -175,8 +285,13 @@ export function renderAlumnos(arg1, arg2) {
   }).join('');
 }
 
+/* ==========================================================================
+   Audiciones de la ronda
+   ========================================================================== */
+
 /**
- * Renderiza la lista de audiciones programadas para la ronda y actualiza la tarjeta de validación de código
+ * Renderiza la lista de audiciones programadas para la ronda
+ * y actualiza la tarjeta de validación de código.
  */
 export function renderAudiciones(arg1, arg2) {
   let audiciones = [];
@@ -192,6 +307,7 @@ export function renderAudiciones(arg1, arg2) {
   } else {
     audiciones = Array.isArray(arg1) ? arg1 : [];
     ronda = arg2 || 1;
+
     const audEl = DOM.get('audicionNumero');
     if (audEl) audicionActualNum = parseInt(audEl.textContent, 10) || 1;
   }
@@ -203,17 +319,16 @@ export function renderAudiciones(arg1, arg2) {
 
   // Buscar audición actual para mostrar el código de validación al jurado
   const audData = audiciones.find(a => a.audicionNum === audicionActualNum) || audiciones[audicionActualNum - 1];
-  
+
   const nombreEl = document.getElementById('admin-cancion-nombre');
   const codigoEl = document.getElementById('admin-cancion-codigo');
   const duracionEl = document.getElementById('admin-seg-duracion');
-
   const configRonda = CONFIG.ROUNDS[ronda] || { duracion: 40, audiciones: 4 };
   const badgeRango = document.getElementById('badge-rango-reproduccion');
+
   if (badgeRango) {
     badgeRango.textContent = `📍 Rango: de 0s a ${configRonda.duracion || 40}s`;
   }
-
   if (nombreEl) {
     nombreEl.textContent = audData ? (audData.cancionNombre || `Composición #${audData.cancionId}`) : 'Composición no asignada';
   }
@@ -227,20 +342,34 @@ export function renderAudiciones(arg1, arg2) {
   // Si existe un contenedor adicional de info de la ronda
   const infoContainer = document.getElementById('ronda-info-detalles');
   if (infoContainer) {
+    const rondaFinal = esRondaFinal(ronda);
+    const minimo = configRonda.minimoPasar ?? 2;
+
+    const objetivoHtml = rondaFinal
+      ? `<span>🏆 <strong>Ronda final:</strong> mínimo ${minimo} aciertos</span>`
+      : `<span>🎯 <strong>Mínimo para clasificar:</strong> ${minimo} aciertos</span>`;
+
+    const etiquetaFinalHtml = rondaFinal
+      ? '<span class="font-bold text-amber-300">🏆 Ronda final · Finalistas</span>'
+      : '';
+
     infoContainer.innerHTML = `
       <div class="flex flex-wrap items-center justify-between text-[10px] md:text-xs bg-blue-950/70 p-2 rounded-lg border border-blue-700/60 mt-2 gap-2">
         <span>⏱ <strong>Duración:</strong> ${configRonda.duracion || 40}s por audición</span>
-        <span>🎯 <strong>Mínimo para clasificar:</strong> ${configRonda.minimoPasar || 2} aciertos</span>
+        ${objetivoHtml}
         <span>🎼 <strong>Total audiciones:</strong> ${configRonda.audiciones || 4}</span>
+        ${etiquetaFinalHtml}
         ${soloLectura ? '<span class="font-bold text-cyan-300">Consulta histórica · solo lectura</span>' : ''}
       </div>
     `;
   }
 }
 
-/**
- * Renderiza la tabla completa del ranking
- */
+/* ==========================================================================
+   Ranking general
+   ========================================================================== */
+
+/** Renderiza la tabla completa del ranking. */
 export function renderRanking(ranking) {
   const content = DOM.get('rankingContent');
   if (!content) return;
@@ -254,6 +383,7 @@ export function renderRanking(ranking) {
     return;
   }
 
+  const totalRondas = getTotalRondas();
   const podiumHtml = renderTopTres(ranking.filter((item, index) => getRankPosition(item, index) <= 3));
 
   const rowsHtml = ranking.map((item, idx) => {
@@ -272,9 +402,35 @@ export function renderRanking(ranking) {
       rowClass = 'bg-amber-700/10 hover:bg-amber-700/20 border-l-4 border-amber-600';
     }
 
-    const estadoDetalle = item.eliminado 
-      ? `Eliminado en Ronda ${item.rondaEliminacion || 1}` 
-      : `Activo (Ronda ${item.rondaMax || 1})`;
+    // Estado: en la ronda final se muestra "Finalista", nunca "Eliminado"
+    const eliminadoItem = esVerdadero(item.eliminado);
+    const finalistaEliminado = eliminadoItem && esRondaFinal(item.rondaEliminacion);
+    const finalistaEnCurso = !eliminadoItem && esRondaFinal(item.rondaMax);
+
+    const estadoDetalle = finalistaEliminado
+      ? '🏆 Finalista'
+      : finalistaEnCurso
+        ? '🏆 Finalista · en competencia'
+        : eliminadoItem
+          ? `Eliminado en Ronda ${item.rondaEliminacion || 1}`
+          : `Activo (Ronda ${item.rondaMax || 1})`;
+
+    const estadoClass = finalistaEliminado
+      ? BADGE.finalista
+      : finalistaEnCurso
+        ? BADGE.finalistaEnCurso
+        : eliminadoItem
+          ? BADGE.eliminado
+          : BADGE.activo;
+
+    const estadoTitle = finalistaEliminado
+      ? `Finalista · cerró su participación en la ronda final (Ronda ${totalRondas})`
+      : finalistaEnCurso
+        ? `Finalista · en competencia en la ronda final (Ronda ${totalRondas})`
+        : eliminadoItem
+          ? `Eliminado en la Ronda ${item.rondaEliminacion || 1}`
+          : `Activo en la Ronda ${item.rondaMax || 1}`;
+
     const trayectoria = renderTrayectoriaRondas(item);
 
     return `
@@ -286,7 +442,7 @@ export function renderRanking(ranking) {
         </td>
         <td class="p-3 text-slate-300 text-sm">${sanitizeInput(item.grado || '')} ${sanitizeInput(item.nivel || '')}</td>
         <td class="p-3 text-center">
-          <span class="inline-block px-2.5 py-1 rounded-full text-xs font-semibold ${item.eliminado ? 'bg-rose-950 text-rose-300 border border-rose-800' : 'bg-emerald-950 text-emerald-300 border border-emerald-800'}">
+          <span class="inline-block px-2.5 py-1 rounded-full text-xs font-semibold ${estadoClass}" title="${sanitizeInput(estadoTitle)}">
             ${estadoDetalle}
           </span>
         </td>
@@ -302,7 +458,6 @@ export function renderRanking(ranking) {
 
   content.innerHTML = `
     ${podiumHtml}
-
     <div class="overflow-x-auto rounded-xl border border-slate-700 bg-slate-900/80 shadow-xl mt-6">
       <table class="w-full text-left border-collapse">
         <thead>
@@ -330,26 +485,47 @@ function getRankPosition(item, index) {
 
 function renderTrayectoriaRondas(item) {
   const details = item.detalleRondas || {};
-  return Array.from({ length: CONFIG.TOTAL_RONDAS }, (_, index) => {
+  const rondaMax = Number(item.rondaMax || 0);
+
+  return Array.from({ length: getTotalRondas() }, (_, index) => {
     const round = index + 1;
     const key = `ronda_${round}`;
     const reached = Object.prototype.hasOwnProperty.call(details, key);
+    const rondaFinal = esRondaFinal(round);
+
     if (!reached) {
-      if (round <= Number(item.rondaMax || 0)) {
-        return `<span class="rounded-md bg-cyan-950 px-2 py-1 text-[10px] text-cyan-200" title="Llegó a la Ronda ${round}; aún no registra puntaje">R${round} en curso</span>`;
+      if (round <= rondaMax) {
+        const claseCurso = rondaFinal
+          ? 'bg-amber-950 text-amber-200 ring-1 ring-amber-600/60'
+          : 'bg-cyan-950 text-cyan-200';
+        const tituloCurso = rondaFinal
+          ? `Ronda final: llegó a la Ronda ${round}; aún no registra puntaje`
+          : `Llegó a la Ronda ${round}; aún no registra puntaje`;
+
+        return `<span class="rounded-md ${claseCurso} px-2 py-1 text-[10px]" title="${tituloCurso}">${rondaFinal ? '🏆 ' : ''}R${round} en curso</span>`;
       }
+
       return `<span class="rounded-md bg-slate-800 px-2 py-1 text-[10px] text-slate-500" title="No llegó a la Ronda ${round}">R${round} —</span>`;
     }
 
     const score = sanitizeInput(details[key]);
     const total = CONFIG.ROUNDS[round] ? CONFIG.ROUNDS[round].audiciones : '?';
-    return `<span class="rounded-md bg-emerald-950 px-2 py-1 text-[10px] text-emerald-200" title="Aciertos en Ronda ${round}">R${round} ${score}/${total}</span>`;
+    const clasePuntaje = rondaFinal
+      ? 'bg-amber-950 text-amber-200 ring-1 ring-amber-600/60'
+      : 'bg-emerald-950 text-emerald-200';
+    const tituloPuntaje = rondaFinal
+      ? `Ronda final · ${score} aciertos de ${total}`
+      : `Aciertos en Ronda ${round}`;
+
+    return `<span class="rounded-md ${clasePuntaje} px-2 py-1 text-[10px]" title="${tituloPuntaje}">${rondaFinal ? '🏆 ' : ''}R${round} ${score}/${total}</span>`;
   }).join('');
 }
 
-/**
- * Renderiza el podio visual TOP 3
- */
+/* ==========================================================================
+   Podio TOP 3
+   ========================================================================== */
+
+/** Renderiza el podio visual TOP 3. */
 export function renderTopTres(topTres) {
   if (!topTres || topTres.length === 0) return '';
 
@@ -358,9 +534,11 @@ export function renderTopTres(topTres) {
     2: { medal: '🥈', className: 'border-slate-300 bg-slate-800/80 text-slate-200' },
     3: { medal: '🥉', className: 'border-amber-600 bg-amber-950/50 text-amber-200' }
   };
+
   const columns = [2, 1, 3].map(position => {
     const members = topTres.filter((item, index) => getRankPosition(item, index) === position);
     const style = styles[position];
+
     if (members.length === 0) return '<div class="min-h-24"></div>';
 
     return `
@@ -371,6 +549,7 @@ export function renderTopTres(topTres) {
             <div class="rounded-xl bg-slate-950/50 p-3">
               <p class="font-extrabold text-white">${sanitizeInput(formatNombre(item.nombre))}</p>
               <p class="text-xs text-slate-300">${sanitizeInput(item.grado || '')}</p>
+              ${esFinalista(item) ? '<p class="mt-1 text-[10px] font-bold uppercase tracking-wide text-amber-300">🏆 Finalista</p>' : ''}
               <p class="mt-1 font-black text-yellow-300">${Number(item.puntosTotal) || 0} pts</p>
             </div>
           `).join('')}
@@ -382,9 +561,11 @@ export function renderTopTres(topTres) {
   return `<div class="podium-container grid grid-cols-1 md:grid-cols-3 items-end gap-3 md:gap-6 my-8 px-2 max-w-4xl mx-auto">${columns}</div>`;
 }
 
-/**
- * Actualiza el display del timer
- */
+/* ==========================================================================
+   Timer y estado de ronda
+   ========================================================================== */
+
+/** Actualiza el display del timer. */
 export function renderTimer(timeLeft, total = 40) {
   const display = DOM.get('timerDisplay');
   if (!display) return;
@@ -402,9 +583,7 @@ export function renderTimer(timeLeft, total = 40) {
   }
 }
 
-/**
- * Muestra información de la ronda actual
- */
+/** Muestra información de la ronda actual. */
 export function renderEstadoRonda(ronda, config) {
   const select = DOM.get('selectRonda');
   if (select && select.value !== String(ronda)) {
